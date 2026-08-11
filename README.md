@@ -1,36 +1,79 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# Chismisa 💬
+
+Anonymous real-time group chat. Create a group, share the invite code, and start chismisan!
+
+## Tech Stack
+
+- **Next.js 16** (App Router, Turbopack)
+- **React 19**
+- **Prisma 7** with PostgreSQL
+- **Tailwind CSS 4**
+- **JWT** session auth (jose)
+- **bcryptjs** password hashing
 
 ## Getting Started
 
-First, run the development server:
+### Prerequisites
+
+- Node.js 20+
+- PostgreSQL database (local or hosted — e.g. Supabase, Neon, Vercel Postgres)
+
+### Local Development
+
+1. Clone the repo and install dependencies:
+
+```bash
+git clone https://github.com/biro-dev/chismisa.git
+cd chismisa
+npm install
+```
+
+2. Create a `.env` file (see `.env.example`):
+
+```env
+# Postgres connection string (e.g. from Supabase/Neon/Vercel Postgres)
+DATABASE_URL="postgresql://user:password@host:5432/dbname?schema=public"
+
+# JWT session secrets — generate strong values with: openssl rand -base64 32
+SESSION_SECRET="your-strong-secret"
+JWT_SECRET="your-another-strong-secret"
+
+# Master admin secret for /chismis-admin
+ADMIN_SECRET="your-admin-master-key"
+```
+
+3. Run migrations:
+
+```bash
+npx prisma migrate dev
+```
+
+4. Start the dev server:
 
 ```bash
 npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+Open [http://localhost:3000](http://localhost:3000).
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+## Deployment on Vercel
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+1. Push this repo to GitHub.
+2. Import the repo in [Vercel](https://vercel.com/new).
+3. Add the following **Environment Variables** in Vercel project settings:
+   - `DATABASE_URL` — your Postgres connection string
+   - `SESSION_SECRET` — a strong random secret
+   - `JWT_SECRET` — a strong random secret
+   - `ADMIN_SECRET` — your admin master key
+4. Deploy!
 
-## Learn More
+Vercel will automatically run `npm install` (which runs `prisma generate`) and `next build`.
 
-To learn more about Next.js, take a look at the following resources:
+> **Note:** You must migrate your Postgres database. Run `npx prisma migrate deploy` against your production database, or use `prisma db push` from your terminal/CI.
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+## Features
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
-
-## Deploy on Vercel
-
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
-
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+- 🔐 **Auto-register login** — just pick a username and password
+- 👥 **Group chat** — create or join groups with invite codes
+- 💬 **Real-time messaging** — 200 latest messages per group
+- 🛡️ **Admin panel** — `/chismis-admin` with secret-key access to view/delete groups & messages
