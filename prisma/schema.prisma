@@ -1,0 +1,49 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+}
+
+model User {
+  id          String        @id @default(cuid())
+  username    String        @unique
+  password    String
+  createdAt   DateTime      @default(now())
+  ownedGroups Group[]
+  members     GroupMember[]
+  messages    Message[]
+}
+
+model Group {
+  id        String        @id @default(cuid())
+  name      String
+  code      String        @unique
+  ownerId   String
+  createdAt DateTime      @default(now())
+  owner     User          @relation(fields: [ownerId], references: [id])
+  members   GroupMember[]
+  messages  Message[]
+}
+
+model GroupMember {
+  id       String   @id @default(cuid())
+  userId   String
+  groupId  String
+  joinedAt DateTime @default(now())
+  user     User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  group    Group    @relation(fields: [groupId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, groupId])
+}
+
+model Message {
+  id        String   @id @default(cuid())
+  content   String
+  groupId   String
+  userId    String
+  createdAt DateTime @default(now())
+  group     Group    @relation(fields: [groupId], references: [id], onDelete: Cascade)
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
