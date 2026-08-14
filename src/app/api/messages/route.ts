@@ -34,9 +34,11 @@ export async function GET(request: NextRequest) {
         select: { id: true, username: true },
       },
     },
-    orderBy: { createdAt: "asc" },
+    orderBy: { createdAt: "desc" },
     take: 200,
   });
+  // Reverse to display in chronological order (oldest → newest)
+  messages.reverse();
 
   return NextResponse.json(
     messages.map((m) => ({

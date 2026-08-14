@@ -78,9 +78,11 @@ export async function getMessages(groupId: string) {
         select: { id: true, username: true },
       },
     },
-    orderBy: { createdAt: "asc" },
+    orderBy: { createdAt: "desc" },
     take: 200,
   });
+  // Reverse to display in chronological order (oldest → newest)
+  messages.reverse();
 
   return messages.map((m) => ({
     id: m.id,

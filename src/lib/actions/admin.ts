@@ -8,10 +8,6 @@ function verifyAdminSecret(secret: string): boolean {
   return secret === masterSecret;
 }
 
-export async function checkAdminSecret(secret: string): Promise<boolean> {
-  return verifyAdminSecret(secret);
-}
-
 export async function getAdminStats(secret: string) {
   if (!verifyAdminSecret(secret)) return null;
 
@@ -52,12 +48,5 @@ export async function deleteGroupAction(secret: string, groupId: string) {
   if (!verifyAdminSecret(secret)) return { error: "Unauthorized." };
 
   await db.group.delete({ where: { id: groupId } });
-  return { success: true };
-}
-
-export async function deleteMessageAction(secret: string, messageId: string) {
-  if (!verifyAdminSecret(secret)) return { error: "Unauthorized." };
-
-  await db.message.delete({ where: { id: messageId } });
   return { success: true };
 }

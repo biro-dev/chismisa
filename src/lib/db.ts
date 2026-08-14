@@ -8,7 +8,6 @@ const globalForPrisma = globalThis as unknown as {
 function createPrismaClient() {
   const databaseUrl = process.env.DATABASE_URL || "postgresql://localhost:5432/chismisa";
 
-  // eslint-disable-next-line @typescript-eslint/no-require-imports
   return new PrismaClient({ adapter: new PrismaPg(databaseUrl) });
 }
 

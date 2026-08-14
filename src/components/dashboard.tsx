@@ -80,8 +80,8 @@ export function Dashboard({
 
   // Poll for new messages every 2 seconds for real-time updates
   useEffect(() => {
-    if (!activeGroup) return;
-    const groupId = activeGroup.id;
+    const groupId = activeGroup?.id;
+    if (!groupId) return;
     const interval = setInterval(async () => {
       try {
         const res = await fetch(`/api/messages?groupId=${groupId}`, {
@@ -96,7 +96,7 @@ export function Dashboard({
       }
     }, 2000);
     return () => clearInterval(interval);
-  }, [activeGroup]);
+  }, [activeGroup?.id]);
 
   // Scroll to bottom on new messages
   useEffect(() => {

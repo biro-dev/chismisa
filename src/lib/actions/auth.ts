@@ -36,9 +36,24 @@ export async function loginAction(
     if (!user) {
       // Auto-register new user
       const hashedPassword = await bcrypt.hash(password, 10);
-      user = await db.user.create({
-        data: { username, password: hashedPassword },
-      });
+      try {
+        user = await db.user.create({
+          data: { username, password: hashedPassword },
+        });
+      } catch (err) {
+        // Handle race condition: another request created this user first
+        const prismaErr = err as { code?: string };
+        if (prismaErr.code === "P2002") {
+          user = await db.user.findUnique({ where: { username } });
+          if (!user) throw err;
+          const valid = await bcrypt.compare(password, user.password);
+          if (!valid) {
+            return { error: "Invalid credentials. Wrong password for this username." };
+          }
+        } else {
+          throw err;
+        }
+      }
     } else {
       // Verify password
       const valid = await bcrypt.compare(password, user.password);

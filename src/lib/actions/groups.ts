@@ -1,7 +1,6 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
-import { redirect } from "next/navigation";
 import { db } from "@/lib/db";
 import { getSession } from "@/lib/session";
 
@@ -172,8 +171,4 @@ export async function getGroupDetails(groupId: string) {
       username: m.user.username,
     })),
   };
-}
-
-export async function redirectToGroup(groupId: string) {
-  redirect(`/?group=${groupId}`);
 }
