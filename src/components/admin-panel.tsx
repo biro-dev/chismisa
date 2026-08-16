@@ -111,16 +111,16 @@ export function AdminPanel() {
                   onChange={(e) => setSecret(e.target.value)}
                   required
                   placeholder="Enter master secret key"
-                  className="w-full rounded-xl border border-zinc-700/60 bg-zinc-900/60 py-2.5 pl-10 pr-4 text-sm text-zinc-100 placeholder-zinc-500 outline-none transition-colors focus:border-red-500 focus:ring-2 focus:ring-red-500/20"
+                  className="w-full rounded-xl border border-zinc-700/60 bg-zinc-900/60 py-3 pl-10 pr-4 text-sm text-zinc-100 placeholder-zinc-500 outline-none transition-colors focus:border-red-500 focus:ring-2 focus:ring-red-500/20 sm:py-2.5"
                 />
               </div>
             </div>
             <button
               type="submit"
               disabled={loading}
-              className="w-full rounded-xl bg-gradient-to-r from-red-600 to-purple-600 py-3 text-sm font-semibold text-white transition-colors hover:from-red-500 hover:to-purple-500 disabled:opacity-60"
+              className="w-full rounded-xl bg-gradient-to-r from-red-600 to-purple-600 py-3.5 text-sm font-semibold text-white transition-colors hover:from-red-500 hover:to-purple-500 disabled:opacity-60 sm:py-3"
             >
-              {loading ? "Verifying…" : "Access Admin Panel"}
+              {loading ? "Verifying..." : "Access Admin Panel"}
             </button>
             <button
               type="button"
@@ -137,8 +137,8 @@ export function AdminPanel() {
   }
 
   return (
-    <div className="flex flex-1 flex-col p-6">
-      <div className="mb-6 flex items-center justify-between">
+    <div className="flex flex-1 flex-col p-4 sm:p-6">
+      <div className="mb-6 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
         <div className="flex items-center gap-3">
           <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-gradient-to-br from-red-600 to-purple-600">
             <Shield className="h-5 w-5 text-white" />
@@ -170,8 +170,8 @@ export function AdminPanel() {
       {stats && (
         <>
           {/* Stats cards */}
-          <div className="mb-6 grid grid-cols-1 gap-4 sm:grid-cols-3">
-            <div className="rounded-2xl border border-zinc-800 bg-[#120a1f] p-5">
+          <div className="mb-6 grid grid-cols-1 gap-3 sm:grid-cols-3 sm:gap-4">
+            <div className="rounded-2xl border border-zinc-800 bg-[#120a1f] p-4 sm:p-5">
               <div className="flex items-center gap-3">
                 <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-purple-600/20">
                   <Users className="h-5 w-5 text-purple-400" />
@@ -184,7 +184,7 @@ export function AdminPanel() {
                 </div>
               </div>
             </div>
-            <div className="rounded-2xl border border-zinc-800 bg-[#120a1f] p-5">
+            <div className="rounded-2xl border border-zinc-800 bg-[#120a1f] p-4 sm:p-5">
               <div className="flex items-center gap-3">
                 <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-fuchsia-600/20">
                   <Hash className="h-5 w-5 text-fuchsia-400" />
@@ -197,7 +197,7 @@ export function AdminPanel() {
                 </div>
               </div>
             </div>
-            <div className="rounded-2xl border border-zinc-800 bg-[#120a1f] p-5">
+            <div className="rounded-2xl border border-zinc-800 bg-[#120a1f] p-4 sm:p-5">
               <div className="flex items-center gap-3">
                 <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-emerald-600/20">
                   <MessageSquare className="h-5 w-5 text-emerald-400" />

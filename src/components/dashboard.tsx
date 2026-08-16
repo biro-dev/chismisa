@@ -13,6 +13,7 @@ import {
   X,
   Send,
   Shield,
+  Menu,
 } from "lucide-react";
 import { logoutAction } from "@/lib/actions/auth";
 import { createGroupAction, joinGroupAction } from "@/lib/actions/groups";
@@ -68,6 +69,7 @@ export function Dashboard({
   const [copied, setCopied] = useState(false);
   const [messageInput, setMessageInput] = useState("");
   const [sending, setSending] = useState(false);
+  const [sidebarOpen, setSidebarOpen] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const [createState, createAction, createPending] = useActionState(
     createGroupAction,
@@ -108,6 +110,7 @@ export function Dashboard({
     if (createState?.success && createState.groupId) {
       router.push(`/?group=${createState.groupId}`);
       router.refresh();
+      setSidebarOpen(false);
     }
   }, [createState, router]);
 
@@ -116,6 +119,7 @@ export function Dashboard({
     if (joinState?.success && joinState.groupId) {
       router.push(`/?group=${joinState.groupId}`);
       router.refresh();
+      setSidebarOpen(false);
     }
   }, [joinState, router]);
 
@@ -160,12 +164,34 @@ export function Dashboard({
   const selectGroup = (groupId: string) => {
     router.push(`/?group=${groupId}`);
     router.refresh();
+    setSidebarOpen(false);
   };
 
   return (
     <div className="flex h-screen overflow-hidden">
-      {/* Left Sidebar */}
-      <aside className="flex w-72 flex-col border-r border-zinc-800/60 bg-[#0d0818]">
+      {/* Mobile sidebar overlay */}
+      {sidebarOpen && (
+        <div
+          className="fixed inset-0 z-40 bg-black/60 backdrop-blur-sm md:hidden"
+          onClick={() => setSidebarOpen(false)}
+        />
+      )}
+
+      {/* Left Sidebar - responsive: hidden on mobile, show as overlay; visible on md+ */}
+      <aside
+        className={`fixed z-50 flex w-72 flex-col border-r border-zinc-800/60 bg-[#0d0818] transition-transform duration-200 md:static md:z-auto md:translate-x-0 ${
+          sidebarOpen ? "translate-x-0" : "-translate-x-full"
+        }`}
+      >
+        {/* Mobile close button */}
+        <button
+          onClick={() => setSidebarOpen(false)}
+          className="absolute right-3 top-3 rounded-lg p-1.5 text-zinc-400 transition-colors hover:bg-zinc-800 hover:text-zinc-200 md:hidden"
+          title="Close menu"
+        >
+          <X className="h-4 w-4" />
+        </button>
+
         {/* User profile header */}
         <div className="flex items-center justify-between border-b border-zinc-800/60 p-4">
           <div className="flex items-center gap-3">
@@ -191,14 +217,20 @@ export function Dashboard({
         {/* Create / Join buttons */}
         <div className="flex gap-2 p-3">
           <button
-            onClick={() => setShowCreateModal(true)}
+            onClick={() => {
+              setShowCreateModal(true);
+              setSidebarOpen(false);
+            }}
             className="flex flex-1 items-center justify-center gap-1.5 rounded-lg bg-gradient-to-r from-purple-600 to-fuchsia-600 py-2 text-xs font-semibold text-white transition-colors hover:from-purple-500 hover:to-fuchsia-500"
           >
             <Plus className="h-3.5 w-3.5" />
             Create
           </button>
           <button
-            onClick={() => setShowJoinModal(true)}
+            onClick={() => {
+              setShowJoinModal(true);
+              setSidebarOpen(false);
+            }}
             className="flex flex-1 items-center justify-center gap-1.5 rounded-lg border border-zinc-700 py-2 text-xs font-semibold text-zinc-300 transition-colors hover:bg-zinc-800"
           >
             <Users className="h-3.5 w-3.5" />
@@ -269,7 +301,26 @@ export function Dashboard({
       </aside>
 
       {/* Right Panel - Chat */}
-      <main className="flex flex-1 flex-col bg-[#0a0612]">
+      <main className="relative flex flex-1 flex-col bg-[#0a0612]">
+        {/* Mobile top bar with hamburger menu */}
+        <div className="flex items-center gap-3 border-b border-zinc-800/60 px-3 py-2 md:hidden">
+          <button
+            onClick={() => setSidebarOpen(true)}
+            className="rounded-lg p-2 text-zinc-400 transition-colors hover:bg-zinc-800 hover:text-zinc-200"
+            title="Open menu"
+          >
+            <Menu className="h-5 w-5" />
+          </button>
+          <div className="flex items-center gap-2">
+            <div className="flex h-7 w-7 items-center justify-center rounded-md bg-gradient-to-br from-purple-600 to-fuchsia-600">
+              <Hash className="h-3.5 w-3.5 text-white" />
+            </div>
+            <h2 className="text-sm font-semibold text-zinc-100">
+              {activeGroup ? activeGroup.name : "Chismisa"}
+            </h2>
+          </div>
+        </div>
+
         {activeGroup ? (
           <>
             {/* Chat header */}
@@ -293,13 +344,13 @@ export function Dashboard({
                   className="flex items-center gap-1.5 rounded-lg border border-purple-600/40 bg-purple-600/10 px-3 py-1.5 text-xs font-semibold text-purple-300 transition-colors hover:bg-purple-600/20"
                 >
                   <Copy className="h-3.5 w-3.5" />
-                  Invite Code
+                  <span className="hidden sm:inline">Invite Code</span>
                 </button>
               )}
             </div>
 
             {/* Messages */}
-            <div className="flex-1 overflow-y-auto px-5 py-4">
+            <div className="flex-1 overflow-y-auto px-3 py-4 sm:px-5">
               {messages.length === 0 ? (
                 <div className="flex h-full flex-col items-center justify-center text-center">
                   <MessageSquare className="mb-3 h-10 w-10 text-zinc-700" />
@@ -317,7 +368,7 @@ export function Dashboard({
                         className={`flex ${isOwn ? "justify-end" : "justify-start"}`}
                       >
                         <div
-                          className={`max-w-[70%] ${isOwn ? "items-end" : "items-start"}`}
+                          className={`max-w-[85%] sm:max-w-[70%] ${isOwn ? "items-end" : "items-start"}`}
                         >
                           <p
                             className={`mb-1 text-xs font-medium ${
@@ -359,7 +410,7 @@ export function Dashboard({
             {/* Message input */}
             <form
               onSubmit={handleSendMessage}
-              className="border-t border-zinc-800/60 p-4"
+              className="border-t border-zinc-800/60 p-3 sm:p-4"
             >
               <div className="flex items-center gap-2">
                 <input
@@ -373,7 +424,7 @@ export function Dashboard({
                 <button
                   type="submit"
                   disabled={!messageInput.trim() || sending}
-                  className="flex h-10 w-10 items-center justify-center rounded-xl bg-gradient-to-r from-purple-600 to-fuchsia-600 text-white transition-all hover:from-purple-500 hover:to-fuchsia-500 disabled:cursor-not-allowed disabled:opacity-40"
+                  className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-gradient-to-r from-purple-600 to-fuchsia-600 text-white transition-all hover:from-purple-500 hover:to-fuchsia-500 disabled:cursor-not-allowed disabled:opacity-40"
                 >
                   <Send className="h-4 w-4" />
                 </button>
@@ -381,7 +432,7 @@ export function Dashboard({
             </form>
           </>
         ) : (
-          <div className="flex flex-1 flex-col items-center justify-center text-center">
+          <div className="flex flex-1 flex-col items-center justify-center p-6 text-center">
             <div className="mb-4 flex h-20 w-20 items-center justify-center rounded-3xl bg-gradient-to-br from-purple-600 to-fuchsia-600 shadow-xl shadow-purple-900/40">
               <MessageSquare className="h-10 w-10 text-white" />
             </div>
@@ -392,7 +443,7 @@ export function Dashboard({
               Create a group to start chatting, or join an existing one with an
               invite code.
             </p>
-            <div className="mt-6 flex gap-3">
+            <div className="mt-6 flex flex-col gap-3 sm:flex-row">
               <button
                 onClick={() => setShowCreateModal(true)}
                 className="rounded-xl bg-gradient-to-r from-purple-600 to-fuchsia-600 px-5 py-2.5 text-sm font-semibold text-white transition-colors hover:from-purple-500 hover:to-fuchsia-500"

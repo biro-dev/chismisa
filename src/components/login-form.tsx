@@ -41,7 +41,7 @@ export function LoginForm() {
             minLength={3}
             maxLength={20}
             placeholder="e.g. siomai_girl2000"
-            className="w-full rounded-xl border border-zinc-700/60 bg-zinc-900/60 py-2.5 pl-10 pr-4 text-sm text-zinc-100 placeholder-zinc-500 outline-none transition-colors focus:border-purple-500 focus:ring-2 focus:ring-purple-500/20"
+            className="w-full rounded-xl border border-zinc-700/60 bg-zinc-900/60 py-3 pl-10 pr-4 text-sm text-zinc-100 placeholder-zinc-500 outline-none transition-colors focus:border-purple-500 focus:ring-2 focus:ring-purple-500/20 sm:py-2.5"
           />
         </div>
       </div>
@@ -62,7 +62,7 @@ export function LoginForm() {
             required
             minLength={4}
             placeholder="••••••••"
-            className="w-full rounded-xl border border-zinc-700/60 bg-zinc-900/60 py-2.5 pl-10 pr-4 text-sm text-zinc-100 placeholder-zinc-500 outline-none transition-colors focus:border-purple-500 focus:ring-2 focus:ring-purple-500/20"
+            className="w-full rounded-xl border border-zinc-700/60 bg-zinc-900/60 py-3 pl-10 pr-4 text-sm text-zinc-100 placeholder-zinc-500 outline-none transition-colors focus:border-purple-500 focus:ring-2 focus:ring-purple-500/20 sm:py-2.5"
           />
         </div>
       </div>
@@ -70,9 +70,9 @@ export function LoginForm() {
       <button
         type="submit"
         disabled={pending}
-        className="w-full rounded-xl bg-gradient-to-r from-purple-600 to-fuchsia-600 py-3 text-sm font-semibold text-white shadow-lg shadow-purple-900/40 transition-all hover:from-purple-500 hover:to-fuchsia-500 disabled:cursor-not-allowed disabled:opacity-60"
+        className="w-full rounded-xl bg-gradient-to-r from-purple-600 to-fuchsia-600 py-3.5 text-sm font-semibold text-white shadow-lg shadow-purple-900/40 transition-all hover:from-purple-500 hover:to-fuchsia-500 disabled:cursor-not-allowed disabled:opacity-60 sm:py-3"
       >
-        {pending ? "Entering…" : "Log in / Sign up"}
+        {pending ? "Entering..." : "Log in / Sign up"}
       </button>
     </form>
   );
