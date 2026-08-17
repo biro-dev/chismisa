@@ -13,6 +13,9 @@ export async function GET(request: NextRequest) {
     return NextResponse.json({ error: "Missing groupId" }, { status: 400 });
   }
 
+  // Optional: only fetch messages newer than this timestamp (incremental polling)
+  const since = request.nextUrl.searchParams.get("since");
+
   // Verify membership
   const member = await db.groupMember.findUnique({
     where: {
@@ -28,10 +31,29 @@ export async function GET(request: NextRequest) {
   }
 
   const messages = await db.message.findMany({
-    where: { groupId },
+    where: {
+      groupId,
+      ...(since ? { createdAt: { gt: new Date(since) } } : {}),
+    },
     include: {
       user: {
         select: { id: true, username: true },
+      },
+      replyTo: {
+        select: {
+          id: true,
+          content: true,
+          user: {
+            select: { username: true },
+          },
+        },
+      },
+      reactions: {
+        include: {
+          user: {
+            select: { id: true, username: true },
+          },
+        },
       },
     },
     orderBy: { createdAt: "desc" },
@@ -47,6 +69,19 @@ export async function GET(request: NextRequest) {
       userId: m.userId,
       username: m.user.username,
       createdAt: m.createdAt.toISOString(),
+      replyTo: m.replyTo
+        ? {
+            id: m.replyTo.id,
+            content: m.replyTo.content,
+            username: m.replyTo.user.username,
+          }
+        : null,
+      reactions: m.reactions.map((r) => ({
+        id: r.id,
+        emoji: r.emoji,
+        userId: r.userId,
+        username: r.user.username,
+      })),
     }))
   );
 }

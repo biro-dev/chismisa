@@ -34,9 +34,8 @@ npm install
 # Postgres connection string (e.g. from Supabase/Neon/Vercel Postgres)
 DATABASE_URL="postgresql://user:password@host:5432/dbname?schema=public"
 
-# JWT session secrets — generate strong values with: openssl rand -base64 32
+# JWT session secret — generate a strong value with: openssl rand -base64 32
 SESSION_SECRET="your-strong-secret"
-JWT_SECRET="your-another-strong-secret"
 
 # Master admin secret for /chismis-admin
 ADMIN_SECRET="your-admin-master-key"
@@ -63,7 +62,6 @@ Open [http://localhost:3000](http://localhost:3000).
 3. Add the following **Environment Variables** in Vercel project settings:
    - `DATABASE_URL` — your Postgres connection string
    - `SESSION_SECRET` — a strong random secret
-   - `JWT_SECRET` — a strong random secret
    - `ADMIN_SECRET` — your admin master key
 4. Deploy!
 

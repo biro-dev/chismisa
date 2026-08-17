@@ -130,7 +130,8 @@ export async function getUserGroups() {
   return memberships.map((m) => ({
     id: m.group.id,
     name: m.group.name,
-    code: m.group.code,
+    // Don't expose the invite code to non-owners via the RSC payload.
+    code: m.group.ownerId === session.userId ? m.group.code : "",
     isOwner: m.group.ownerId === session.userId,
     memberCount: m.group._count.members,
     messageCount: m.group._count.messages,
@@ -160,11 +161,15 @@ export async function getGroupDetails(groupId: string) {
   const isMember = group.members.some((m) => m.userId === session.userId);
   if (!isMember) return null;
 
+  const isOwner = group.ownerId === session.userId;
+
   return {
     id: group.id,
     name: group.name,
-    code: group.code,
-    isOwner: group.ownerId === session.userId,
+    // Only expose the invite code to the group owner. Non-owners
+    // shouldn't be able to extract it from the RSC payload.
+    code: isOwner ? group.code : "",
+    isOwner,
     memberCount: group.members.length,
     members: group.members.map((m) => ({
       id: m.user.id,

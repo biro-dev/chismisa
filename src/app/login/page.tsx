@@ -25,8 +25,8 @@ export default async function LoginPage() {
         </div>
         <LoginForm />
         <p className="mt-6 text-center text-xs text-zinc-500">
-          New here? Just pick a username and password — your account gets
-          created automatically.
+          New here? Just pick a username and a password of at least 8
+          characters — your account gets created automatically.
         </p>
       </div>
     </div>

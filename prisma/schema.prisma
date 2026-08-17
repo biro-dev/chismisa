@@ -7,13 +7,14 @@ datasource db {
 }
 
 model User {
-  id          String        @id @default(cuid())
-  username    String        @unique
+  id          String             @id @default(cuid())
+  username    String             @unique
   password    String
-  createdAt   DateTime      @default(now())
+  createdAt   DateTime           @default(now())
   ownedGroups Group[]
   members     GroupMember[]
   messages    Message[]
+  reactions   MessageReaction[]
 }
 
 model Group {
@@ -39,11 +40,27 @@ model GroupMember {
 }
 
 model Message {
+  id         String             @id @default(cuid())
+  content    String
+  groupId    String
+  userId     String
+  replyToId  String?
+  createdAt  DateTime           @default(now())
+  group      Group              @relation(fields: [groupId], references: [id], onDelete: Cascade)
+  user       User               @relation(fields: [userId], references: [id], onDelete: Cascade)
+  replyTo    Message?           @relation("MessageReplies", fields: [replyToId], references: [id], onDelete: SetNull)
+  replies    Message[]          @relation("MessageReplies")
+  reactions  MessageReaction[]
+}
+
+model MessageReaction {
   id        String   @id @default(cuid())
-  content   String
-  groupId   String
+  messageId String
   userId    String
+  emoji     String
   createdAt DateTime @default(now())
-  group     Group    @relation(fields: [groupId], references: [id], onDelete: Cascade)
+  message   Message  @relation(fields: [messageId], references: [id], onDelete: Cascade)
   user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([messageId, userId, emoji])
 }

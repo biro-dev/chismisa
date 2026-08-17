@@ -1,6 +1,15 @@
 "use client";
 
-import { useState } from "react";
+import {
+  useState,
+  useCallback,
+  useMemo,
+  memo,
+  useActionState,
+  useEffect,
+  useRef,
+  useTransition,
+} from "react";
 import { useRouter } from "next/navigation";
 import {
   MessageSquare,
@@ -14,11 +23,15 @@ import {
   Send,
   Shield,
   Menu,
+  CornerUpLeft,
+  Smile,
 } from "lucide-react";
 import { logoutAction } from "@/lib/actions/auth";
 import { createGroupAction, joinGroupAction } from "@/lib/actions/groups";
-import { sendMessageAction } from "@/lib/actions/messages";
-import { useActionState, useEffect, useRef } from "react";
+import {
+  sendMessageAction,
+  reactToMessageAction,
+} from "@/lib/actions/messages";
 
 type Group = {
   id: string;
@@ -38,12 +51,25 @@ type GroupDetails = {
   members: { id: string; username: string }[];
 };
 
+type MessageReaction = {
+  id: string;
+  emoji: string;
+  userId: string;
+  username: string;
+};
+
 type Message = {
   id: string;
   content: string;
   userId: string;
   username: string;
   createdAt: string;
+  replyTo: {
+    id: string;
+    content: string;
+    username: string;
+  } | null;
+  reactions: MessageReaction[];
 };
 
 type DashboardProps = {
@@ -53,6 +79,168 @@ type DashboardProps = {
   activeGroup: GroupDetails | null;
   messages: Message[];
 };
+
+const REACTION_EMOJIS = ["👍", "❤️", "😂", "🎉", "😮"];
+
+// Memoized message bubble — only re-renders when its own message data changes
+const MessageBubble = memo(function MessageBubble({
+  msg,
+  isOwn,
+  userId,
+  onReply,
+  onReact,
+}: {
+  msg: Message;
+  isOwn: boolean;
+  userId: string;
+  onReply: (msg: Message) => void;
+  onReact: (messageId: string, emoji: string) => void;
+}) {
+  const [reactionMenuOpen, setReactionMenuOpen] = useState(false);
+
+  // Group reactions by emoji — memoized so it only recomputes when reactions change
+  const groupedReactions = useMemo(() => {
+    const grouped = new Map<string, MessageReaction[]>();
+    for (const r of msg.reactions || []) {
+      const existing = grouped.get(r.emoji) || [];
+      existing.push(r);
+      grouped.set(r.emoji, existing);
+    }
+    return Array.from(grouped.entries());
+  }, [msg.reactions]);
+
+  return (
+    <div
+      className={`group flex ${isOwn ? "justify-end" : "justify-start"}`}
+    >
+      <div
+        className={`max-w-[85%] sm:max-w-[70%] ${isOwn ? "items-end" : "items-start"}`}
+      >
+        <p
+          className={`mb-1 text-xs font-medium ${
+            isOwn ? "text-right text-fuchsia-400" : "text-purple-400"
+          }`}
+        >
+          {isOwn ? "You" : msg.username}
+        </p>
+        <div
+          className={`rounded-2xl px-4 py-2.5 text-sm ${
+            isOwn
+              ? "rounded-br-sm bg-gradient-to-r from-purple-600 to-fuchsia-600 text-white"
+              : "rounded-bl-sm bg-zinc-800 text-zinc-100"
+          }`}
+        >
+          {/* Reply indicator */}
+          {msg.replyTo && (
+            <div
+              className={`mb-2 flex items-start gap-1.5 border-l-2 pl-2 text-xs ${
+                isOwn
+                  ? "border-white/40 text-white/80"
+                  : "border-purple-400/60 text-zinc-400"
+              }`}
+            >
+              <CornerUpLeft className="mt-0.5 h-3 w-3 shrink-0" />
+              <div className="min-w-0">
+                <p className="font-medium">
+                  Replying to {msg.replyTo.username}
+                </p>
+                <p className="truncate opacity-80">
+                  {msg.replyTo.content}
+                </p>
+              </div>
+            </div>
+          )}
+          <p className="whitespace-pre-wrap break-words">
+            {msg.content}
+          </p>
+        </div>
+
+        {/* Reactions */}
+        {groupedReactions.length > 0 && (
+          <div
+            className={`mt-1 flex flex-wrap gap-1 ${
+              isOwn ? "justify-end" : ""
+            }`}
+          >
+            {groupedReactions.map(([emoji, reactions]) => (
+              <button
+                key={emoji}
+                onClick={() => onReact(msg.id, emoji)}
+                className={`flex items-center gap-1 rounded-full border px-2 py-0.5 text-xs transition-colors ${
+                  reactions.some((r) => r.userId === userId)
+                    ? "border-purple-500/50 bg-purple-600/20 text-purple-200"
+                    : "border-zinc-700/60 bg-zinc-800/60 text-zinc-300 hover:bg-zinc-700/60"
+                }`}
+                title={`${reactions
+                  .map((r) => r.username)
+                  .join(", ")}`}
+              >
+                <span>{emoji}</span>
+                <span className="font-medium">
+                  {reactions.length}
+                </span>
+              </button>
+            ))}
+          </div>
+        )}
+
+        {/* Action buttons - visible on hover */}
+        <div
+          className={`relative mt-1 flex items-center gap-1 opacity-0 transition-opacity group-hover:opacity-100 ${
+            isOwn ? "justify-end" : ""
+          }`}
+        >
+          {/* Reply button */}
+          <button
+            onClick={() => onReply(msg)}
+            className="rounded-lg p-1 text-zinc-500 transition-colors hover:bg-zinc-800 hover:text-purple-400"
+            title="Reply"
+          >
+            <CornerUpLeft className="h-3.5 w-3.5" />
+          </button>
+          {/* Reaction button */}
+          <button
+            onClick={() => setReactionMenuOpen(!reactionMenuOpen)}
+            className="relative rounded-lg p-1 text-zinc-500 transition-colors hover:bg-zinc-800 hover:text-amber-400"
+            title="React"
+          >
+            <Smile className="h-3.5 w-3.5" />
+          </button>
+
+          {/* Reaction quick actions */}
+          {reactionMenuOpen && (
+            <div className="absolute z-30 mt-1 flex gap-1 rounded-full border border-zinc-700 bg-[#150d24] px-2 py-1 shadow-xl">
+              {REACTION_EMOJIS.map((emoji) => (
+                <button
+                  key={emoji}
+                  onClick={() => {
+                    onReact(msg.id, emoji);
+                    setReactionMenuOpen(false);
+                  }}
+                  className="rounded-full p-1 text-lg transition-transform hover:scale-125"
+                  title={`React with ${emoji}`}
+                >
+                  {emoji}
+                </button>
+              ))}
+            </div>
+          )}
+        </div>
+
+        <p
+          className={`mt-1 text-[10px] text-zinc-600 ${
+            isOwn ? "text-right" : ""
+          }`}
+        >
+          {new Date(msg.createdAt).toLocaleTimeString([], {
+            hour: "numeric",
+            minute: "2-digit",
+          })}
+        </p>
+      </div>
+    </div>
+  );
+});
 
 export function Dashboard({
   username,
@@ -68,9 +256,18 @@ export function Dashboard({
   const [showInviteModal, setShowInviteModal] = useState(false);
   const [copied, setCopied] = useState(false);
   const [messageInput, setMessageInput] = useState("");
-  const [sending, setSending] = useState(false);
   const [sidebarOpen, setSidebarOpen] = useState(false);
+  const [replyTo, setReplyTo] = useState<Message | null>(null);
+  const [actionError, setActionError] = useState("");
   const messagesEndRef = useRef<HTMLDivElement>(null);
+  const scrollContainerRef = useRef<HTMLDivElement>(null);
+  const isNearBottomRef = useRef(true);
+  // Track the latest message timestamp for incremental polling
+  const lastMessageTimeRef = useRef<string | null>(
+    initialMessages.length > 0
+      ? initialMessages[initialMessages.length - 1].createdAt
+      : null
+  );
   const [createState, createAction, createPending] = useActionState(
     createGroupAction,
     undefined
@@ -79,30 +276,77 @@ export function Dashboard({
     joinGroupAction,
     undefined
   );
+  const [, startTransition] = useTransition();
 
-  // Poll for new messages every 2 seconds for real-time updates
+  // Track scroll position to avoid yanking the user when they scroll up
+  const handleScroll = useCallback(() => {
+    const el = scrollContainerRef.current;
+    if (!el) return;
+    const distanceFromBottom = el.scrollHeight - el.scrollTop - el.clientHeight;
+    isNearBottomRef.current = distanceFromBottom < 100;
+  }, []);
+
+  // Incremental polling — only fetches messages newer than the last known one.
+  // Pauses when the tab is hidden.
   useEffect(() => {
     const groupId = activeGroup?.id;
     if (!groupId) return;
-    const interval = setInterval(async () => {
+
+    let interval: ReturnType<typeof setInterval> | null = null;
+
+    const poll = async () => {
+      if (document.hidden) return;
       try {
-        const res = await fetch(`/api/messages?groupId=${groupId}`, {
-          cache: "no-store",
-        });
+        const since = lastMessageTimeRef.current || "";
+        const url = `/api/messages?groupId=${groupId}${
+          since ? `&since=${encodeURIComponent(since)}` : ""
+        }`;
+        const res = await fetch(url, { cache: "no-store" });
         if (res.ok) {
           const data = await res.json();
-          setMessages(data);
+          if (data.length > 0) {
+            setMessages((prev) => {
+              const existingIds = new Set(prev.map((m) => m.id));
+              const newMsgs = data.filter((m: Message) => !existingIds.has(m.id));
+              if (newMsgs.length === 0) return prev;
+              const merged = [...prev, ...newMsgs].sort(
+                (a, b) =>
+                  new Date(a.createdAt).getTime() -
+                  new Date(b.createdAt).getTime()
+              );
+              return merged.slice(-200);
+            });
+            // Update the latest timestamp for the next incremental poll
+            const last = data[data.length - 1];
+            if (last?.createdAt) lastMessageTimeRef.current = last.createdAt;
+          }
         }
       } catch {
         // ignore polling errors
       }
-    }, 2000);
-    return () => clearInterval(interval);
+    };
+
+    // Initial fetch (no `since` — gets the full history)
+    poll();
+    interval = setInterval(poll, 2000);
+
+    // Resume polling immediately when the tab becomes visible again
+    const onVisibility = () => {
+      if (!document.hidden) poll();
+    };
+    document.addEventListener("visibilitychange", onVisibility);
+
+    return () => {
+      if (interval) clearInterval(interval);
+      document.removeEventListener("visibilitychange", onVisibility);
+    };
   }, [activeGroup?.id]);
 
-  // Scroll to bottom on new messages
+  // Smart auto-scroll — only scrolls to bottom if the user is already near it
   useEffect(() => {
-    messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
+    if (isNearBottomRef.current) {
+      messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
+    }
   }, [messages.length, activeGroup?.id]);
 
   // Handle create group success
@@ -110,7 +354,6 @@ export function Dashboard({
     if (createState?.success && createState.groupId) {
       router.push(`/?group=${createState.groupId}`);
       router.refresh();
-      setSidebarOpen(false);
     }
   }, [createState, router]);
 
@@ -119,25 +362,128 @@ export function Dashboard({
     if (joinState?.success && joinState.groupId) {
       router.push(`/?group=${joinState.groupId}`);
       router.refresh();
-      setSidebarOpen(false);
     }
   }, [joinState, router]);
 
+  // Stable callback for replying to a message
+  const handleReply = useCallback((msg: Message) => {
+    setReplyTo(msg);
+  }, []);
+
+  // Optimistic message sending — append locally, reconcile with server
   const handleSendMessage = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!activeGroup || !messageInput.trim() || sending) return;
+    if (!activeGroup || !messageInput.trim()) return;
 
-    setSending(true);
+    const content = messageInput.trim();
+    const replyToMsg = replyTo;
+    const optimisticMsg: Message = {
+      id: `temp-${Date.now()}`,
+      content,
+      userId,
+      username: "You",
+      createdAt: new Date().toISOString(),
+      replyTo: replyToMsg
+        ? {
+            id: replyToMsg.id,
+            content: replyToMsg.content,
+            username: replyToMsg.username,
+          }
+        : null,
+      reactions: [],
+    };
+
+    // Optimistic append — instant feedback
+    setMessages((prev) => [...prev, optimisticMsg]);
+    setMessageInput("");
+    setReplyTo(null);
+    setActionError("");
+
     const formData = new FormData();
     formData.append("groupId", activeGroup.id);
-    formData.append("content", messageInput.trim());
+    formData.append("content", content);
+    if (replyToMsg) {
+      formData.append("replyToId", replyToMsg.id);
+    }
 
     try {
       const result = await sendMessageAction(formData);
-      if (result.success) {
-        setMessageInput("");
-        // Immediately refetch messages
-        const res = await fetch(`/api/messages?groupId=${activeGroup.id}`, {
+      if (result.success && result.message) {
+        // Replace optimistic message with the server-confirmed one.
+        // First remove any copy the polling may have already appended
+        // (e.g. if the poll fetched the confirmed message before this
+        // action resolved), then swap the optimistic entry in.
+        const confirmed = result.message as Message;
+        setMessages((prev) => {
+          const withoutPolledCopy = prev.filter((m) => m.id !== confirmed.id);
+          return withoutPolledCopy.map((m) =>
+            m.id === optimisticMsg.id ? confirmed : m
+          );
+        });
+        lastMessageTimeRef.current = confirmed.createdAt;
+      } else {
+        // Rollback on failure
+        setMessages((prev) => prev.filter((m) => m.id !== optimisticMsg.id));
+        setActionError(result.error || "Failed to send message.");
+      }
+    } catch {
+      // Rollback on error
+      setMessages((prev) => prev.filter((m) => m.id !== optimisticMsg.id));
+      setActionError("Failed to send message.");
+    }
+  };
+
+  // Optimistic reactions — toggle locally, reconcile with server
+  const handleReact = useCallback(
+    async (messageId: string, emoji: string) => {
+      const groupId = activeGroup?.id;
+      if (!groupId) return;
+
+      // Optimistic toggle
+      setMessages((prev) =>
+        prev.map((m) => {
+          if (m.id !== messageId) return m;
+          const existing = m.reactions.find(
+            (r) => r.userId === userId && r.emoji === emoji
+          );
+          if (existing) {
+            return {
+              ...m,
+              reactions: m.reactions.filter((r) => r.id !== existing.id),
+            };
+          }
+          return {
+            ...m,
+            reactions: [
+              ...m.reactions,
+              {
+                id: `temp-${Date.now()}`,
+                emoji,
+                userId,
+                username,
+              },
+            ],
+          };
+        })
+      );
+
+      try {
+        const result = await reactToMessageAction(messageId, emoji);
+        if (!result.success) {
+          setActionError(result.error || "Failed to add reaction.");
+          // Refetch to rollback to server state
+          const res = await fetch(`/api/messages?groupId=${groupId}`, {
+            cache: "no-store",
+          });
+          if (res.ok) {
+            const data = await res.json();
+            setMessages(data);
+          }
+        }
+      } catch {
+        setActionError("Failed to add reaction.");
+        // Refetch to rollback to server state
+        const res = await fetch(`/api/messages?groupId=${groupId}`, {
           cache: "no-store",
         });
         if (res.ok) {
@@ -145,10 +491,9 @@ export function Dashboard({
           setMessages(data);
         }
       }
-    } finally {
-      setSending(false);
-    }
-  };
+    },
+    [activeGroup?.id, userId, username]
+  );
 
   const copyInviteCode = async () => {
     if (!activeGroup) return;
@@ -162,9 +507,13 @@ export function Dashboard({
   };
 
   const selectGroup = (groupId: string) => {
-    router.push(`/?group=${groupId}`);
-    router.refresh();
     setSidebarOpen(false);
+    setReplyTo(null);
+    // Use startTransition for non-blocking UI updates during navigation
+    startTransition(() => {
+      router.push(`/?group=${groupId}`);
+      router.refresh();
+    });
   };
 
   return (
@@ -350,7 +699,11 @@ export function Dashboard({
             </div>
 
             {/* Messages */}
-            <div className="flex-1 overflow-y-auto px-3 py-4 sm:px-5">
+            <div
+              ref={scrollContainerRef}
+              onScroll={handleScroll}
+              className="flex-1 overflow-y-auto px-3 py-4 sm:px-5"
+            >
               {messages.length === 0 ? (
                 <div className="flex h-full flex-col items-center justify-center text-center">
                   <MessageSquare className="mb-3 h-10 w-10 text-zinc-700" />
@@ -360,52 +713,61 @@ export function Dashboard({
                 </div>
               ) : (
                 <div className="space-y-4">
-                  {messages.map((msg) => {
-                    const isOwn = msg.userId === userId;
-                    return (
-                      <div
-                        key={msg.id}
-                        className={`flex ${isOwn ? "justify-end" : "justify-start"}`}
-                      >
-                        <div
-                          className={`max-w-[85%] sm:max-w-[70%] ${isOwn ? "items-end" : "items-start"}`}
-                        >
-                          <p
-                            className={`mb-1 text-xs font-medium ${
-                              isOwn ? "text-right text-fuchsia-400" : "text-purple-400"
-                            }`}
-                          >
-                            {isOwn ? "You" : msg.username}
-                          </p>
-                          <div
-                            className={`rounded-2xl px-4 py-2.5 text-sm ${
-                              isOwn
-                                ? "rounded-br-sm bg-gradient-to-r from-purple-600 to-fuchsia-600 text-white"
-                                : "rounded-bl-sm bg-zinc-800 text-zinc-100"
-                            }`}
-                          >
-                            <p className="whitespace-pre-wrap break-words">
-                              {msg.content}
-                            </p>
-                          </div>
-                          <p
-                            className={`mt-1 text-[10px] text-zinc-600 ${
-                              isOwn ? "text-right" : ""
-                            }`}
-                          >
-                            {new Date(msg.createdAt).toLocaleTimeString([], {
-                              hour: "numeric",
-                              minute: "2-digit",
-                            })}
-                          </p>
-                        </div>
-                      </div>
-                    );
-                  })}
+                  {messages.map((msg) => (
+                    <MessageBubble
+                      key={msg.id}
+                      msg={msg}
+                      isOwn={msg.userId === userId}
+                      userId={userId}
+                      onReply={handleReply}
+                      onReact={handleReact}
+                    />
+                  ))}
                   <div ref={messagesEndRef} />
                 </div>
               )}
             </div>
+
+            {/* Action error banner */}
+            {actionError && (
+              <div className="border-t border-red-500/30 bg-red-500/10 px-4 py-2">
+                <div className="flex items-center justify-between">
+                  <p className="text-xs text-red-400">{actionError}</p>
+                  <button
+                    onClick={() => setActionError("")}
+                    className="rounded p-0.5 text-red-400/70 transition-colors hover:text-red-300"
+                    title="Dismiss"
+                  >
+                    <X className="h-3.5 w-3.5" />
+                  </button>
+                </div>
+              </div>
+            )}
+
+            {/* Reply preview bar */}
+            {replyTo && (
+              <div className="border-t border-zinc-800/60 bg-[#120a1f] px-4 py-2">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-2 text-xs text-zinc-400">
+                    <CornerUpLeft className="h-3 w-3 text-purple-400" />
+                    <span>
+                      Replying to{" "}
+                      <span className="font-semibold text-purple-300">
+                        {replyTo.username}
+                      </span>
+                      : <span className="truncate">{replyTo.content}</span>
+                    </span>
+                  </div>
+                  <button
+                    onClick={() => setReplyTo(null)}
+                    className="rounded p-0.5 text-zinc-500 transition-colors hover:text-zinc-300"
+                    title="Cancel reply"
+                  >
+                    <X className="h-3.5 w-3.5" />
+                  </button>
+                </div>
+              </div>
+            )}
 
             {/* Message input */}
             <form
@@ -423,7 +785,7 @@ export function Dashboard({
                 />
                 <button
                   type="submit"
-                  disabled={!messageInput.trim() || sending}
+                  disabled={!messageInput.trim()}
                   className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-gradient-to-r from-purple-600 to-fuchsia-600 text-white transition-all hover:from-purple-500 hover:to-fuchsia-500 disabled:cursor-not-allowed disabled:opacity-40"
                 >
                   <Send className="h-4 w-4" />

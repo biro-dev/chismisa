@@ -34,7 +34,15 @@ export async function loginAction(
     let user = await db.user.findUnique({ where: { username } });
 
     if (!user) {
-      // Auto-register new user
+      // Auto-register new user — require a stronger password for new
+      // accounts. Existing users keep their original (possibly shorter)
+      // password so they aren't locked out on login.
+      if (password.length < 8) {
+        return {
+          error: "New accounts require a password with at least 8 characters.",
+        };
+      }
+
       const hashedPassword = await bcrypt.hash(password, 10);
       try {
         user = await db.user.create({
