@@ -454,6 +454,13 @@ export function Dashboard({
   const scrollContainerRef = useRef<HTMLDivElement>(null);
   const isNearBottomRef = useRef(true);
   const scrollRafRef = useRef<number | null>(null);
+  const [hasMore, setHasMore] = useState(true);
+  const [loadingOlder, setLoadingOlder] = useState(false);
+  const hasMoreRef = useRef(true);
+  const loadingOlderRef = useRef(false);
+  const oldestMessageTimeRef = useRef<string | null>(
+    initialMessages.length > 0 ? initialMessages[0].createdAt : null
+  );
   // Track the latest message timestamp for incremental polling
   const lastMessageTimeRef = useRef<string | null>(
     initialMessages.length > 0
@@ -470,6 +477,65 @@ export function Dashboard({
   );
   const [, startTransition] = useTransition();
 
+  // Load older messages when the user scrolls to the top (Messenger-style).
+  // Uses cursor-based pagination via the `before` timestamp.
+  const loadOlderMessages = useCallback(async () => {
+    const groupId = activeGroup?.id;
+    if (!groupId) return;
+    if (loadingOlderRef.current || !hasMoreRef.current) return;
+
+    const before = oldestMessageTimeRef.current;
+    if (!before) {
+      setHasMore(false);
+      return;
+    }
+
+    loadingOlderRef.current = true;
+    setLoadingOlder(true);
+
+    const el = scrollContainerRef.current;
+    const prevScrollHeight = el?.scrollHeight || 0;
+
+    try {
+      const url = `/api/messages?groupId=${groupId}&before=${encodeURIComponent(
+        before
+      )}&limit=50`;
+      const res = await fetch(url, { cache: "no-store" });
+      if (res.ok) {
+        const data = await res.json();
+        if (data.length === 0) {
+          setHasMore(false);
+        } else {
+          setMessages((prev) => {
+            const existingIds = new Set(prev.map((m) => m.id));
+            const olderMsgs = data.filter(
+              (m: Message) => !existingIds.has(m.id)
+            );
+            return [...olderMsgs, ...prev];
+          });
+          // Track the new oldest message for the next page
+          oldestMessageTimeRef.current = data[0].createdAt;
+          // Preserve scroll position after prepending older messages
+          requestAnimationFrame(() => {
+            if (el) {
+              el.scrollTop = el.scrollHeight - prevScrollHeight;
+            }
+          });
+        }
+      }
+    } catch {
+      // ignore load errors
+    } finally {
+      loadingOlderRef.current = false;
+      setLoadingOlder(false);
+    }
+  }, [activeGroup?.id]);
+
+  // Keep the ref in sync so handleScroll can call it without stale closures
+  useEffect(() => {
+    hasMoreRef.current = hasMore;
+  }, [hasMore]);
+
   // Track scroll position to avoid yanking the user when they scroll up.
   // rAF-throttled so it only runs once per frame instead of on every scroll event.
   const handleScroll = useCallback(() => {
@@ -480,8 +546,12 @@ export function Dashboard({
       if (!el) return;
       const distanceFromBottom = el.scrollHeight - el.scrollTop - el.clientHeight;
       isNearBottomRef.current = distanceFromBottom < 100;
+      // Trigger loading older messages when scrolled near the top
+      if (el.scrollTop < 50) {
+        loadOlderMessages();
+      }
     });
-  }, []);
+  }, [loadOlderMessages]);
 
   // Incremental polling — only fetches messages newer than the last known one.
   // Pauses when the tab is hidden.
@@ -511,7 +581,7 @@ export function Dashboard({
                   new Date(a.createdAt).getTime() -
                   new Date(b.createdAt).getTime()
               );
-              return merged.slice(-200);
+              return merged.slice(-500);
             });
             // Update the latest timestamp for the next incremental poll
             const last = data[data.length - 1];
@@ -720,7 +790,7 @@ export function Dashboard({
   };
 
   return (
-    <div className="flex h-screen overflow-hidden">
+    <div className="flex h-dvh overflow-hidden">
       {/* Mobile sidebar overlay */}
       {sidebarOpen && (
         <div
@@ -916,6 +986,18 @@ export function Dashboard({
                 </div>
               ) : (
                 <div className="space-y-4">
+                  {/* Loading indicator when fetching older messages */}
+                  {loadingOlder && (
+                    <div className="flex justify-center py-2">
+                      <div className="h-5 w-5 animate-spin rounded-full border-2 border-purple-500 border-t-transparent" />
+                    </div>
+                  )}
+                  {/* All caught up indicator */}
+                  {!hasMore && messages.length > 0 && (
+                    <p className="py-2 text-center text-xs text-zinc-600">
+                      You're all caught up
+                    </p>
+                  )}
                   {messages.map((msg) => (
                     <MessageBubble
                       key={msg.id}

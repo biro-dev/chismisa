@@ -15,6 +15,14 @@ export async function GET(request: NextRequest) {
 
   // Optional: only fetch messages newer than this timestamp (incremental polling)
   const since = request.nextUrl.searchParams.get("since");
+  // Optional: fetch messages older than this timestamp (infinite scroll up)
+  const before = request.nextUrl.searchParams.get("before");
+  // Optional: page size (default 50, max 200)
+  const limitParam = request.nextUrl.searchParams.get("limit");
+  const limit = Math.min(
+    Math.max(parseInt(limitParam || "50", 10) || 50, 1),
+    200
+  );
 
   // Verify membership
   const member = await db.groupMember.findUnique({
@@ -34,6 +42,7 @@ export async function GET(request: NextRequest) {
     where: {
       groupId,
       ...(since ? { createdAt: { gt: new Date(since) } } : {}),
+      ...(before ? { createdAt: { lt: new Date(before) } } : {}),
     },
     include: {
       user: {
@@ -57,7 +66,7 @@ export async function GET(request: NextRequest) {
       },
     },
     orderBy: { createdAt: "desc" },
-    take: 200,
+    take: limit,
   });
   // Reverse to display in chronological order (oldest → newest)
   messages.reverse();

@@ -224,7 +224,7 @@ export async function getMessages(groupId: string) {
       },
     },
     orderBy: { createdAt: "desc" },
-    take: 200,
+    take: 50,
   });
   // Reverse to display in chronological order (oldest → newest)
   messages.reverse();
