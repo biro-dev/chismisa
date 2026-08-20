@@ -32,6 +32,8 @@ import {
   sendMessageAction,
   reactToMessageAction,
 } from "@/lib/actions/messages";
+import { Capacitor } from "@capacitor/core";
+import { Haptics, ImpactStyle } from "@capacitor/haptics";
 
 type Group = {
   id: string;
@@ -198,6 +200,10 @@ const MessageBubble = memo(function MessageBubble({
         isDraggingRef.current = true;
         setReactionMenuOpen(true);
         setHighlightedEmoji(null);
+        // Light haptic feedback on native (Capacitor) platforms
+        if (Capacitor.isNativePlatform()) {
+          Haptics.impact({ style: ImpactStyle.Light }).catch(() => {});
+        }
       }, 200);
     },
     []
@@ -260,6 +266,10 @@ const MessageBubble = memo(function MessageBubble({
         const emoji = highlightedEmojiRef.current;
         if (emoji) {
           onReact(msg.id, emoji);
+          // Haptic feedback when an emoji is selected on native
+          if (Capacitor.isNativePlatform()) {
+            Haptics.impact({ style: ImpactStyle.Medium }).catch(() => {});
+          }
         }
         isDraggingRef.current = false;
         suppressClickRef.current = true;
@@ -925,7 +935,7 @@ export function Dashboard({
       {/* Right Panel - Chat */}
       <main className="relative flex flex-1 flex-col bg-[#0a0612]">
         {/* Mobile top bar with hamburger menu */}
-        <div className="flex items-center gap-3 border-b border-zinc-800/60 px-3 py-2 md:hidden">
+        <div className="safe-top flex items-center gap-3 border-b border-zinc-800/60 px-3 py-2 md:hidden">
           <button
             onClick={() => setSidebarOpen(true)}
             className="rounded-lg p-2 text-zinc-400 transition-colors hover:bg-zinc-800 hover:text-zinc-200"
@@ -1057,7 +1067,7 @@ export function Dashboard({
             {/* Message input */}
             <form
               onSubmit={handleSendMessage}
-              className="border-t border-zinc-800/60 p-3 sm:p-4"
+              className="safe-bottom border-t border-zinc-800/60 p-3 sm:p-4"
             >
               <div className="flex items-center gap-2">
                 <input

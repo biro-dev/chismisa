@@ -1,0 +1,7 @@
+<?xml version='1.0' encoding='utf-8'?>
+<resources>
+    <string name="app_name">Chismisa</string>
+    <string name="title_activity_main">Chismisa</string>
+    <string name="package_name">com.chismisa.app</string>
+    <string name="custom_url_scheme">com.chismisa.app</string>
+</resources>
