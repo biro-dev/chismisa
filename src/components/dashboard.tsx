@@ -452,6 +452,28 @@ export function Dashboard({
 }: DashboardProps) {
   const router = useRouter();
   const [messages, setMessages] = useState<Message[]>(initialMessages);
+  // Client-side group switching: keep the selected group in local state so
+  // tapping a group is instant (no full page reload). The server still
+  // provides the initial activeGroup + messages on first load.
+  const [selectedGroup, setSelectedGroup] = useState<GroupDetails | null>(
+    activeGroup
+  );
+  const [selectedGroupId, setSelectedGroupId] = useState<string | null>(
+    activeGroup?.id ?? null
+  );
+  // Per-group message cache so switching back to a previously-viewed group
+  // shows its messages instantly while fresh data loads in the background.
+  const messageCacheRef = useRef<Map<string, Message[]>>(new Map());
+  // Per-group details cache (name, member count, etc.)
+  const groupDetailsCacheRef = useRef<Map<string, GroupDetails>>(new Map());
+  // Track the latest message timestamp per group for incremental polling
+  const lastMessageTimeByGroupRef = useRef<Map<string, string>>(new Map());
+  // Track the oldest loaded message per group for pagination
+  const oldestMessageTimeByGroupRef = useRef<Map<string, string>>(new Map());
+  // Track hasMore per group
+  const hasMoreByGroupRef = useRef<Map<string, boolean>>(new Map());
+  // Track loadingOlder per group
+  const loadingOlderByGroupRef = useRef<Map<string, boolean>>(new Map());
   const [showCreateModal, setShowCreateModal] = useState(false);
   const [showJoinModal, setShowJoinModal] = useState(false);
   const [showInviteModal, setShowInviteModal] = useState(false);
@@ -490,7 +512,7 @@ export function Dashboard({
   // Load older messages when the user scrolls to the top (Messenger-style).
   // Uses cursor-based pagination via the `before` timestamp.
   const loadOlderMessages = useCallback(async () => {
-    const groupId = activeGroup?.id;
+    const groupId = selectedGroupId;
     if (!groupId) return;
     if (loadingOlderRef.current || !hasMoreRef.current) return;
 
@@ -539,7 +561,7 @@ export function Dashboard({
       loadingOlderRef.current = false;
       setLoadingOlder(false);
     }
-  }, [activeGroup?.id]);
+  }, [selectedGroupId]);
 
   // Keep the ref in sync so handleScroll can call it without stale closures
   useEffect(() => {
@@ -566,7 +588,7 @@ export function Dashboard({
   // Incremental polling — only fetches messages newer than the last known one.
   // Pauses when the tab is hidden.
   useEffect(() => {
-    const groupId = activeGroup?.id;
+    const groupId = selectedGroupId;
     if (!groupId) return;
 
     let interval: ReturnType<typeof setInterval> | null = null;
@@ -617,7 +639,7 @@ export function Dashboard({
       if (interval) clearInterval(interval);
       document.removeEventListener("visibilitychange", onVisibility);
     };
-  }, [activeGroup?.id]);
+  }, [selectedGroupId]);
 
   // Smart auto-scroll — only scrolls to bottom if the user is already near it.
   // Uses direct scrollTop + rAF instead of scrollIntoView for smoother, cheaper scrolling.
@@ -630,7 +652,7 @@ export function Dashboard({
         });
       }
     }
-  }, [messages.length, activeGroup?.id]);
+  }, [messages.length, selectedGroupId]);
 
   // Handle create group success
   useEffect(() => {
@@ -656,7 +678,7 @@ export function Dashboard({
   // Optimistic message sending — append locally, reconcile with server
   const handleSendMessage = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!activeGroup || !messageInput.trim()) return;
+    if (!selectedGroup || !messageInput.trim()) return;
 
     const content = messageInput.trim();
     const replyToMsg = replyTo;
@@ -683,7 +705,7 @@ export function Dashboard({
     setActionError("");
 
     const formData = new FormData();
-    formData.append("groupId", activeGroup.id);
+    formData.append("groupId", selectedGroup.id);
     formData.append("content", content);
     if (replyToMsg) {
       formData.append("replyToId", replyToMsg.id);
@@ -719,7 +741,7 @@ export function Dashboard({
   // Optimistic reactions — toggle locally, reconcile with server
   const handleReact = useCallback(
     async (messageId: string, emoji: string) => {
-      const groupId = activeGroup?.id;
+      const groupId = selectedGroupId;
       if (!groupId) return;
 
       // Optimistic toggle
@@ -775,13 +797,13 @@ export function Dashboard({
         }
       }
     },
-    [activeGroup?.id, userId, username]
+    [selectedGroupId, userId, username]
   );
 
   const copyInviteCode = async () => {
-    if (!activeGroup) return;
+    if (!selectedGroup) return;
     try {
-      await navigator.clipboard.writeText(activeGroup.code);
+      await navigator.clipboard.writeText(selectedGroup.code);
       setCopied(true);
       setTimeout(() => setCopied(false), 2000);
     } catch {
@@ -789,15 +811,94 @@ export function Dashboard({
     }
   };
 
-  const selectGroup = (groupId: string) => {
-    setSidebarOpen(false);
-    setReplyTo(null);
-    // Use startTransition for non-blocking UI updates during navigation
-    startTransition(() => {
-      router.push(`/?group=${groupId}`);
-      router.refresh();
-    });
-  };
+  // Instant client-side group switching (no full page reload).
+  // Shows cached messages immediately, fetches fresh ones in the background,
+  // and updates the URL without triggering a server refresh.
+  const selectGroup = useCallback(
+    (groupId: string) => {
+      setSidebarOpen(false);
+      setReplyTo(null);
+      setActionError("");
+
+      // Build GroupDetails from the groups list (we have name/code/memberCount)
+      const group = groups.find((g) => g.id === groupId);
+      if (!group) return;
+
+      const cachedDetails = groupDetailsCacheRef.current.get(groupId);
+      const details: GroupDetails = cachedDetails ?? {
+        id: group.id,
+        name: group.name,
+        code: group.code,
+        isOwner: group.isOwner,
+        memberCount: group.memberCount,
+        members: [],
+      };
+      groupDetailsCacheRef.current.set(groupId, details);
+
+      // Switch the UI instantly
+      setSelectedGroup(details);
+      setSelectedGroupId(groupId);
+
+      // Show cached messages instantly if we've loaded this group before
+      const cached = messageCacheRef.current.get(groupId);
+      if (cached) {
+        setMessages(cached);
+        // Restore per-group pagination state
+        hasMoreRef.current = hasMoreByGroupRef.current.get(groupId) ?? true;
+        loadingOlderRef.current =
+          loadingOlderByGroupRef.current.get(groupId) ?? false;
+        oldestMessageTimeRef.current =
+          oldestMessageTimeByGroupRef.current.get(groupId) ?? null;
+        lastMessageTimeRef.current =
+          lastMessageTimeByGroupRef.current.get(groupId) ?? null;
+      } else {
+        // No cache — show empty state while fetching
+        setMessages([]);
+        hasMoreRef.current = true;
+        loadingOlderRef.current = false;
+        oldestMessageTimeRef.current = null;
+        lastMessageTimeRef.current = null;
+      }
+
+      // Update the URL without a full refresh (keeps shareable links)
+      startTransition(() => {
+        router.replace(`/?group=${groupId}`, { scroll: false });
+      });
+
+      // Fetch fresh messages in the background
+      fetch(`/api/messages?groupId=${groupId}`, { cache: "no-store" })
+        .then((res) => (res.ok ? res.json() : []))
+        .then((data: Message[]) => {
+          messageCacheRef.current.set(groupId, data);
+          // Only apply to the UI if this is still the selected group
+          setSelectedGroupId((current) => {
+            if (current === groupId) {
+              setMessages(data);
+              if (data.length > 0) {
+                oldestMessageTimeRef.current = data[0].createdAt;
+                lastMessageTimeRef.current =
+                  data[data.length - 1].createdAt;
+                oldestMessageTimeByGroupRef.current.set(
+                  groupId,
+                  data[0].createdAt
+                );
+                lastMessageTimeByGroupRef.current.set(
+                  groupId,
+                  data[data.length - 1].createdAt
+                );
+              }
+              hasMoreByGroupRef.current.set(groupId, data.length >= 50);
+              hasMoreRef.current = data.length >= 50;
+            }
+            return current;
+          });
+        })
+        .catch(() => {
+          // ignore fetch errors — polling will retry
+        });
+    },
+    [groups, router]
+  );
 
   return (
     <div className="flex h-dvh overflow-hidden">
@@ -889,14 +990,14 @@ export function Dashboard({
                   key={group.id}
                   onClick={() => selectGroup(group.id)}
                   className={`flex w-full items-center gap-3 rounded-lg px-3 py-2.5 text-left transition-colors ${
-                    activeGroup?.id === group.id
+                    selectedGroupId === group.id
                       ? "bg-purple-600/20 text-purple-200"
                       : "text-zinc-300 hover:bg-zinc-800/60"
                   }`}
                 >
                   <div
                     className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-lg ${
-                      activeGroup?.id === group.id
+                      selectedGroupId === group.id
                         ? "bg-purple-600/30"
                         : "bg-zinc-800"
                     }`}
@@ -948,12 +1049,12 @@ export function Dashboard({
               <Hash className="h-3.5 w-3.5 text-white" />
             </div>
             <h2 className="text-sm font-semibold text-zinc-100">
-              {activeGroup ? activeGroup.name : "Chismisa"}
+              {selectedGroup ? selectedGroup.name : "Chismisa"}
             </h2>
           </div>
         </div>
 
-        {activeGroup ? (
+        {selectedGroup ? (
           <>
             {/* Chat header */}
             <div className="flex items-center justify-between border-b border-zinc-800/60 px-5 py-3">
@@ -963,14 +1064,14 @@ export function Dashboard({
                 </div>
                 <div>
                   <h2 className="text-sm font-semibold text-zinc-100">
-                    {activeGroup.name}
+                    {selectedGroup.name}
                   </h2>
                   <p className="text-xs text-zinc-500">
-                    {activeGroup.memberCount} members
+                    {selectedGroup.memberCount} members
                   </p>
                 </div>
               </div>
-              {activeGroup.isOwner && (
+              {selectedGroup.isOwner && (
                 <button
                   onClick={() => setShowInviteModal(true)}
                   className="flex items-center gap-1.5 rounded-lg border border-purple-600/40 bg-purple-600/10 px-3 py-1.5 text-xs font-semibold text-purple-300 transition-colors hover:bg-purple-600/20"
@@ -1074,7 +1175,7 @@ export function Dashboard({
                   type="text"
                   value={messageInput}
                   onChange={(e) => setMessageInput(e.target.value)}
-                  placeholder={`Message #${activeGroup.name}…`}
+                  placeholder={`Message #${selectedGroup.name}…`}
                   maxLength={2000}
                   className="flex-1 rounded-xl border border-zinc-700/60 bg-zinc-900/60 px-4 py-2.5 text-sm text-zinc-100 placeholder-zinc-500 outline-none transition-colors focus:border-purple-500 focus:ring-2 focus:ring-purple-500/20"
                 />
@@ -1192,19 +1293,19 @@ export function Dashboard({
       )}
 
       {/* Invite Code Modal (owner only) */}
-      {showInviteModal && activeGroup?.isOwner && (
+      {showInviteModal && selectedGroup?.isOwner && (
         <Modal onClose={() => setShowInviteModal(false)} title="Invite Code">
           <div className="space-y-4">
             <p className="text-sm text-zinc-400">
               Share this code with friends to let them join{" "}
               <span className="font-semibold text-zinc-200">
-                {activeGroup.name}
+                {selectedGroup.name}
               </span>
               :
             </p>
             <div className="flex items-center gap-2 rounded-xl border border-purple-600/40 bg-purple-600/10 p-4">
               <code className="flex-1 text-center font-mono text-lg font-bold tracking-widest text-purple-300">
-                {activeGroup.code}
+                {selectedGroup.code}
               </code>
               <button
                 onClick={copyInviteCode}

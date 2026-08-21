@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "125114823607",
+    "project_id": "chismisa-fd9b8",
+    "storage_bucket": "chismisa-fd9b8.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:125114823607:android:b222d32bafad6c471aae32",
+        "android_client_info": {
+          "package_name": "com.chismisa.app"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyDsWFZWCZ0Qnqt1veZdl-8rttkp7h13IZA"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

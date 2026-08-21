@@ -35,6 +35,9 @@ yarn-error.log*
 .env*
 !.env.example
 
+# Firebase service account key (SECRET — never commit)
+*firebase-adminsdk*.json
+
 # prisma dev database
 *.db
 *.db-journal

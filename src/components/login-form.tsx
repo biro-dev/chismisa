@@ -5,6 +5,8 @@ import { useRouter } from "next/navigation";
 import { useEffect } from "react";
 import { Lock, User } from "lucide-react";
 import { loginAction } from "@/lib/actions/auth";
+import { Capacitor } from "@capacitor/core";
+import { registerPush } from "@/lib/push";
 
 export function LoginForm() {
   const router = useRouter();
@@ -12,6 +14,13 @@ export function LoginForm() {
 
   useEffect(() => {
     if (state?.success) {
+      // Now that we're authenticated, (re)register for push so the device
+      // token gets bound to this user on the server. On web this is a no-op.
+      if (Capacitor.isNativePlatform()) {
+        registerPush().catch((err) =>
+          console.error("Post-login push re-register error:", err)
+        );
+      }
       router.push("/");
     }
   }, [state, router]);

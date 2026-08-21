@@ -30,7 +30,6 @@ export default async function HomePage({
 
   return (
     <Dashboard
-      key={activeGroupId ?? "none"}
       username={session.username}
       userId={session.userId}
       groups={groups}

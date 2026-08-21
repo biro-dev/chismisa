@@ -11,10 +11,11 @@ model User {
   username    String             @unique
   password    String
   createdAt   DateTime           @default(now())
-  ownedGroups Group[]
-  members     GroupMember[]
-  messages    Message[]
-  reactions   MessageReaction[]
+  ownedGroups  Group[]
+  members      GroupMember[]
+  messages     Message[]
+  reactions    MessageReaction[]
+  deviceTokens DeviceToken[]
 }
 
 model Group {
@@ -64,3 +65,18 @@ model MessageReaction {
 
   @@unique([messageId, userId, emoji])
 }
+
+model DeviceToken {
+  id        String   @id @default(cuid())
+  userId    String
+  token     String   @unique
+  platform  String   @default("android")
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([platform])
+}
+
+

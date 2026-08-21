@@ -3,6 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { db } from "@/lib/db";
 import { getSession } from "@/lib/session";
+import { getMessaging } from "@/lib/firebase";
 
 export type MessageResult = {
   error?: string;
@@ -26,6 +27,90 @@ export type MessageResult = {
     }[];
   };
 };
+
+// Send an FCM push notification to every group member that has a registered
+// device token, excluding the sender. Called (but not awaited) after a message
+// is created so the chat stays snappy.
+export async function sendGroupMessagePush(
+  groupId: string,
+  senderId: string,
+  senderUsername: string,
+  content: string
+) {
+  // Bail out fast if no Firebase credentials are configured (e.g. local dev)
+  if (!process.env.FIREBASE_SERVICE_ACCOUNT) return;
+
+  try {
+    const group = await db.group.findUnique({
+      where: { id: groupId },
+      select: { name: true },
+    });
+
+    // All members of this group except the sender
+    const memberIds = await db.groupMember
+      .findMany({
+        where: { groupId, userId: { not: senderId } },
+        select: { userId: true },
+      })
+      .then((rows) => rows.map((r) => r.userId));
+
+    if (memberIds.length === 0) return;
+
+    // Device tokens belonging to those members
+    const tokens = await db.deviceToken.findMany({
+      where: { userId: { in: memberIds } },
+      select: { token: true },
+    });
+
+    const validTokens = tokens.map((t) => t.token);
+    if (validTokens.length === 0) return;
+
+    // Build the notification preview (truncate long messages)
+    const body = `${senderUsername}: ${content.slice(0, 100)}`;
+
+    const messaging = getMessaging();
+    const response = await messaging.sendEachForMulticast({
+      tokens: validTokens,
+      notification: {
+        title: group?.name ?? "New message",
+        body,
+      },
+      data: {
+        groupId,
+        senderId,
+        click_action: "/chat",
+      },
+      android: {
+        priority: "high",
+        notification: {
+          sound: "default",
+          clickAction: "/chat",
+        },
+      },
+    });
+
+    // Clean up tokens that are no longer valid (device uninstalled the app)
+    const tokensToRemove: string[] = [];
+    response.responses.forEach((res: { error?: { code?: string } }, index: number) => {
+      const err = res.error;
+      if (
+        err &&
+        (err.code === "messaging/invalid-registration-token" ||
+          err.code === "messaging/registration-token-not-registered")
+      ) {
+        tokensToRemove.push(validTokens[index]);
+      }
+    });
+
+    if (tokensToRemove.length > 0) {
+      await db.deviceToken.deleteMany({
+        where: { token: { in: tokensToRemove } },
+      });
+    }
+  } catch (err) {
+    console.error("FCM push error:", err);
+  }
+}
 
 export async function sendMessageAction(formData: FormData): Promise<MessageResult> {
   const session = await getSession();
@@ -94,6 +179,14 @@ export async function sendMessageAction(formData: FormData): Promise<MessageResu
         reactions: true,
       },
     });
+
+    // Send FCM push notifications to every other group member's devices
+    sendGroupMessagePush(
+      groupId,
+      session.userId,
+      created.user.username,
+      content
+    ).catch((err) => console.error("FCM notification error:", err));
 
     revalidatePath("/");
     return {
