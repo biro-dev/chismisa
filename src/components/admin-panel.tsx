@@ -387,7 +387,7 @@ export function AdminPanel() {
         </button>
 
         {/* Admin header */}
-        <div className="flex items-center justify-between border-b border-zinc-800/60 p-4">
+        <div className="safe-top flex items-center justify-between border-b border-zinc-800/60 p-4">
           <div className="flex items-center gap-3">
             <div className="flex h-10 w-10 items-center justify-center rounded-full bg-gradient-to-br from-red-600 to-purple-600 text-sm font-bold text-white">
               <Shield className="h-5 w-5" />
@@ -489,7 +489,7 @@ export function AdminPanel() {
       {/* Main panel - Chat view of selected group */}
       <main className="relative flex flex-1 flex-col bg-[#0a0612]">
         {/* Mobile top bar */}
-        <div className="flex items-center gap-3 border-b border-zinc-800/60 px-3 py-2 md:hidden">
+        <div className="safe-top flex items-center gap-3 border-b border-zinc-800/60 px-3 py-2 md:hidden">
           <button
             onClick={() => setSidebarOpen(true)}
             className="rounded-lg p-2 text-zinc-400 transition-colors hover:bg-zinc-800 hover:text-zinc-200"

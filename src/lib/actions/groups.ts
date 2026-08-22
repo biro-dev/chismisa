@@ -107,6 +107,61 @@ export async function joinGroupAction(
   }
 }
 
+export async function leaveGroupAction(groupId: string): Promise<GroupActionResult> {
+  const session = await getSession();
+  if (!session) return { error: "Not authenticated." };
+
+  try {
+    const group = await db.group.findUnique({ where: { id: groupId } });
+    if (!group) return { error: "Group not found." };
+
+    // Owners can't leave — they must delete the group instead
+    if (group.ownerId === session.userId) {
+      return { error: "You own this group. Use Delete instead." };
+    }
+
+    // Verify membership
+    const member = await db.groupMember.findUnique({
+      where: {
+        userId_groupId: { userId: session.userId, groupId },
+      },
+    });
+    if (!member) return { error: "You are not a member of this group." };
+
+    await db.groupMember.delete({ where: { id: member.id } });
+
+    revalidatePath("/");
+    return { success: true };
+  } catch (err) {
+    console.error("Leave group error:", err);
+    return { error: "Failed to leave group." };
+  }
+}
+
+export async function deleteGroupAction(groupId: string): Promise<GroupActionResult> {
+  const session = await getSession();
+  if (!session) return { error: "Not authenticated." };
+
+  try {
+    const group = await db.group.findUnique({ where: { id: groupId } });
+    if (!group) return { error: "Group not found." };
+
+    // Only the owner can delete
+    if (group.ownerId !== session.userId) {
+      return { error: "Only the group owner can delete this group." };
+    }
+
+    // Cascade deletes members, messages, and reactions via FK constraints
+    await db.group.delete({ where: { id: groupId } });
+
+    revalidatePath("/");
+    return { success: true };
+  } catch (err) {
+    console.error("Delete group error:", err);
+    return { error: "Failed to delete group." };
+  }
+}
+
 export async function getUserGroups() {
   const session = await getSession();
   if (!session) return [];

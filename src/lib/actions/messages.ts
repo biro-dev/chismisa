@@ -326,20 +326,23 @@ export async function getMessages(groupId: string) {
     id: m.id,
     content: m.content,
     userId: m.userId,
-    username: m.user.username,
+    // Anonymous chat: only the sender sees their own username; everyone
+    // else sees "Anonymous". The admin panel uses a separate action that
+    // still exposes real usernames.
+    username: m.userId === session.userId ? m.user.username : "Anonymous",
     createdAt: m.createdAt.toISOString(),
     replyTo: m.replyTo
       ? {
           id: m.replyTo.id,
           content: m.replyTo.content,
-          username: m.replyTo.user.username,
+          username: "Anonymous",
         }
       : null,
     reactions: m.reactions.map((r) => ({
       id: r.id,
       emoji: r.emoji,
       userId: r.userId,
-      username: r.user.username,
+      username: "Anonymous",
     })),
   }));
 }

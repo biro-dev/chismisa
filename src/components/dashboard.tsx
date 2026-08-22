@@ -25,9 +25,15 @@ import {
   Menu,
   CornerUpLeft,
   Smile,
+  Trash2,
 } from "lucide-react";
 import { logoutAction } from "@/lib/actions/auth";
-import { createGroupAction, joinGroupAction } from "@/lib/actions/groups";
+import {
+  createGroupAction,
+  joinGroupAction,
+  leaveGroupAction,
+  deleteGroupAction,
+} from "@/lib/actions/groups";
 import {
   sendMessageAction,
   reactToMessageAction,
@@ -406,9 +412,9 @@ const MessageBubble = memo(function MessageBubble({
           {reactionMenuOpen && (
             <div
               ref={pickerRef}
-              className="absolute bottom-full mb-1.5 z-30 flex gap-1 rounded-full border border-zinc-700 bg-[#150d24] px-2 py-1.5 shadow-xl animate-pop-in transform-gpu"
+              className="absolute bottom-full mb-1.5 z-30 flex gap-1 rounded-full border border-zinc-700 bg-[#150d24] px-2 py-1.5 shadow-xl animate-reaction-picker transform-gpu"
             >
-              {REACTION_EMOJIS.map((emoji) => (
+              {REACTION_EMOJIS.map((emoji, index) => (
                 <button
                   key={emoji}
                   data-emoji={emoji}
@@ -417,11 +423,12 @@ const MessageBubble = memo(function MessageBubble({
                     onReact(msg.id, emoji);
                     setReactionMenuOpen(false);
                   }}
-                  className={`rounded-full p-1 text-lg transition-transform transform-gpu ${
+                  className={`rounded-full p-1 text-lg transition-transform duration-150 transform-gpu animate-emoji-pop ${
                     highlightedEmoji === emoji
                       ? "scale-150 bg-purple-600/30"
                       : "hover:scale-125"
                   }`}
+                  style={{ animationDelay: `${index * 40}ms` }}
                   title={`React with ${emoji}`}
                 >
                   {emoji}
@@ -477,6 +484,13 @@ export function Dashboard({
   const [showCreateModal, setShowCreateModal] = useState(false);
   const [showJoinModal, setShowJoinModal] = useState(false);
   const [showInviteModal, setShowInviteModal] = useState(false);
+  // Confirmation modal for leaving/deleting a group
+  const [confirmModal, setConfirmModal] = useState<{
+    type: "leave" | "delete";
+    groupId: string;
+    name: string;
+  } | null>(null);
+  const [confirmPending, setConfirmPending] = useState(false);
   const [copied, setCopied] = useState(false);
   const [messageInput, setMessageInput] = useState("");
   const [sidebarOpen, setSidebarOpen] = useState(false);
@@ -811,6 +825,53 @@ export function Dashboard({
     }
   };
 
+  // Handle leave/delete group confirmation
+  const handleConfirmGroupAction = async () => {
+    if (!confirmModal) return;
+    setConfirmPending(true);
+    setActionError("");
+    try {
+      const result =
+        confirmModal.type === "leave"
+          ? await leaveGroupAction(confirmModal.groupId)
+          : await deleteGroupAction(confirmModal.groupId);
+
+      if (result.success) {
+        // Remove the group from the local groups list
+        const remaining = groups.filter((g) => g.id !== confirmModal.groupId);
+        // Clear caches for this group
+        messageCacheRef.current.delete(confirmModal.groupId);
+        groupDetailsCacheRef.current.delete(confirmModal.groupId);
+        lastMessageTimeByGroupRef.current.delete(confirmModal.groupId);
+        oldestMessageTimeByGroupRef.current.delete(confirmModal.groupId);
+        hasMoreByGroupRef.current.delete(confirmModal.groupId);
+        loadingOlderByGroupRef.current.delete(confirmModal.groupId);
+
+        // If we were viewing this group, switch to another one
+        if (selectedGroupId === confirmModal.groupId) {
+          if (remaining.length > 0) {
+            selectGroup(remaining[0].id);
+          } else {
+            setSelectedGroup(null);
+            setSelectedGroupId(null);
+            setMessages([]);
+            router.replace("/", { scroll: false });
+          }
+        }
+        setConfirmModal(null);
+        router.refresh();
+      } else {
+        setActionError(result.error || "Failed to perform action.");
+        setConfirmModal(null);
+      }
+    } catch {
+      setActionError("Something went wrong. Please try again.");
+      setConfirmModal(null);
+    } finally {
+      setConfirmPending(false);
+    }
+  };
+
   // Instant client-side group switching (no full page reload).
   // Shows cached messages immediately, fetches fresh ones in the background,
   // and updates the URL without triggering a server refresh.
@@ -926,7 +987,7 @@ export function Dashboard({
         </button>
 
         {/* User profile header */}
-        <div className="flex items-center justify-between border-b border-zinc-800/60 p-4">
+        <div className="safe-top flex items-center justify-between border-b border-zinc-800/60 p-4">
           <div className="flex items-center gap-3">
             <div className="flex h-10 w-10 items-center justify-center rounded-full bg-gradient-to-br from-purple-600 to-fuchsia-600 text-sm font-bold text-white">
               {username.charAt(0).toUpperCase()}
@@ -1071,15 +1132,48 @@ export function Dashboard({
                   </p>
                 </div>
               </div>
-              {selectedGroup.isOwner && (
-                <button
-                  onClick={() => setShowInviteModal(true)}
-                  className="flex items-center gap-1.5 rounded-lg border border-purple-600/40 bg-purple-600/10 px-3 py-1.5 text-xs font-semibold text-purple-300 transition-colors hover:bg-purple-600/20"
-                >
-                  <Copy className="h-3.5 w-3.5" />
-                  <span className="hidden sm:inline">Invite Code</span>
-                </button>
-              )}
+              <div className="flex items-center gap-2">
+                {selectedGroup.isOwner ? (
+                  <>
+                    <button
+                      onClick={() => setShowInviteModal(true)}
+                      className="flex items-center gap-1.5 rounded-lg border border-purple-600/40 bg-purple-600/10 px-3 py-1.5 text-xs font-semibold text-purple-300 transition-colors hover:bg-purple-600/20"
+                    >
+                      <Copy className="h-3.5 w-3.5" />
+                      <span className="hidden sm:inline">Invite Code</span>
+                    </button>
+                    <button
+                      onClick={() =>
+                        setConfirmModal({
+                          type: "delete",
+                          groupId: selectedGroup.id,
+                          name: selectedGroup.name,
+                        })
+                      }
+                      className="flex items-center gap-1.5 rounded-lg border border-red-500/40 bg-red-500/10 px-3 py-1.5 text-xs font-semibold text-red-300 transition-colors hover:bg-red-500/20"
+                      title="Delete group"
+                    >
+                      <Trash2 className="h-3.5 w-3.5" />
+                      <span className="hidden sm:inline">Delete</span>
+                    </button>
+                  </>
+                ) : (
+                  <button
+                    onClick={() =>
+                      setConfirmModal({
+                        type: "leave",
+                        groupId: selectedGroup.id,
+                        name: selectedGroup.name,
+                      })
+                    }
+                    className="flex items-center gap-1.5 rounded-lg border border-zinc-700 px-3 py-1.5 text-xs font-semibold text-zinc-300 transition-colors hover:bg-zinc-800"
+                    title="Leave group"
+                  >
+                    <LogOut className="h-3.5 w-3.5" />
+                    <span className="hidden sm:inline">Leave</span>
+                  </button>
+                )}
+              </div>
             </div>
 
             {/* Messages */}
@@ -1324,6 +1418,62 @@ export function Dashboard({
                 Copied to clipboard!
               </p>
             )}
+          </div>
+        </Modal>
+      )}
+
+      {/* Leave/Delete Group Confirmation Modal */}
+      {confirmModal && (
+        <Modal
+          onClose={() => setConfirmModal(null)}
+          title={confirmModal.type === "leave" ? "Leave Group" : "Delete Group"}
+        >
+          <div className="space-y-4">
+            <p className="text-sm text-zinc-400">
+              {confirmModal.type === "leave" ? (
+                <>
+                  Are you sure you want to leave{" "}
+                  <span className="font-semibold text-zinc-200">
+                    {confirmModal.name}
+                  </span>
+                  ? You can rejoin later with the invite code.
+                </>
+              ) : (
+                <>
+                  Are you sure you want to delete{" "}
+                  <span className="font-semibold text-zinc-200">
+                    {confirmModal.name}
+                  </span>
+                  ? This will permanently remove the group and all its messages.
+                </>
+              )}
+            </p>
+            <div className="flex gap-3">
+              <button
+                onClick={() => setConfirmModal(null)}
+                disabled={confirmPending}
+                className="flex-1 rounded-xl border border-zinc-700 py-2.5 text-sm font-semibold text-zinc-300 transition-colors hover:bg-zinc-800 disabled:opacity-60"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={handleConfirmGroupAction}
+                disabled={confirmPending}
+                className={`flex-1 rounded-xl py-2.5 text-sm font-semibold text-white transition-colors disabled:opacity-60 ${
+                  confirmModal.type === "leave"
+                    ? "bg-zinc-700 hover:bg-zinc-600"
+                    : "bg-red-600 hover:bg-red-500"
+                }`}
+              >
+                {confirmPending
+                  ? confirmModal.type === "leave"
+                    ? "Leaving..."
+                    : "Deleting..."
+                  : confirmModal.type === "leave"
+                  ? "Leave"
+                  : "Delete"}
+              </button>
+            </div>
           </div>
         </Modal>
       )}
