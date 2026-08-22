@@ -318,6 +318,22 @@ export async function deleteMessageAction(
   }
 }
 
+// Mark the group as read for the current user (updates lastReadAt).
+// Called automatically while the user is viewing the group.
+export async function markGroupAsRead(groupId: string): Promise<void> {
+  const session = await getSession();
+  if (!session) return;
+
+  try {
+    await db.groupMember.updateMany({
+      where: { userId: session.userId, groupId },
+      data: { lastReadAt: new Date() },
+    });
+  } catch {
+    // non-critical — ignore errors
+  }
+}
+
 export async function getMessages(groupId: string) {
   const session = await getSession();
   if (!session) return [];

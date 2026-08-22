@@ -38,6 +38,19 @@ export async function GET(request: NextRequest) {
     return NextResponse.json({ error: "Forbidden" }, { status: 403 });
   }
 
+  // Read receipts: mark this group as read for the current user.
+  // Polling happens every ~2s while viewing, keeping lastReadAt fresh.
+  await db.groupMember.updateMany({
+    where: { userId: session.userId, groupId },
+    data: { lastReadAt: new Date() },
+  });
+
+  // Fetch all members' read states (for computing seen counts)
+  const memberReadStates = await db.groupMember.findMany({
+    where: { groupId },
+    select: { userId: true, lastReadAt: true },
+  });
+
   // Message history limit: purge messages older than 30 days.
   // Runs with ~2% probability per request to avoid overhead on every poll.
   if (Math.random() < 0.02) {
@@ -96,6 +109,16 @@ export async function GET(request: NextRequest) {
       username: m.userId === session.userId ? m.user.username : "Anonymous",
       deletedAt: m.deletedAt ? m.deletedAt.toISOString() : null,
       createdAt: m.createdAt.toISOString(),
+      // Seen count: how many OTHER members have read up to this message
+      seenCount:
+        m.userId === session.userId
+          ? memberReadStates.filter(
+              (ms) =>
+                ms.userId !== m.userId &&
+                ms.lastReadAt !== null &&
+                new Date(ms.lastReadAt) >= m.createdAt
+            ).length
+          : 0,
       replyTo: m.replyTo
         ? {
             id: m.replyTo.id,

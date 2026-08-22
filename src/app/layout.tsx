@@ -17,6 +17,19 @@ export const metadata: Metadata = {
   title: "Chismisa — Anonymous Group Chat",
   description:
     "Chismisa is a playful anonymous real-time group chat. Create a group, share the code, and start chismisan!",
+  manifest: "/manifest.json",
+  icons: {
+    icon: [
+      { url: "/icon-192.png", sizes: "192x192", type: "image/png" },
+      { url: "/icon-512.png", sizes: "512x512", type: "image/png" },
+    ],
+    apple: [{ url: "/icon-192.png", sizes: "192x192" }],
+  },
+  appleWebApp: {
+    capable: true,
+    statusBarStyle: "black-translucent",
+    title: "Chismisa",
+  },
 };
 
 export const viewport: Viewport = {

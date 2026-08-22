@@ -8,6 +8,13 @@ import {
   type PushNotificationActionPerformed,
   type RegistrationError,
 } from "@capacitor/push-notifications";
+import { initializeApp, getApps } from "firebase/app";
+import {
+  getMessaging,
+  getToken,
+  onMessage,
+  isSupported as fcmIsSupported,
+} from "firebase/messaging";
 
 export type PushRegisterResult = {
   granted: boolean;
@@ -17,15 +24,33 @@ export type PushRegisterResult = {
 
 let _listenersInstalled = false;
 
+// Firebase web config — public values, safe to expose client-side.
+const firebaseConfig = {
+  apiKey: "AIzaSyDsWFZWCZ0Qnqt1veZdl-8rttkp7h13IZA",
+  authDomain: "chismisa-fd9b8.firebaseapp.com",
+  projectId: "chismisa-fd9b8",
+  storageBucket: "chismisa-fd9b8.firebasestorage.app",
+  messagingSenderId: "125114823607",
+  appId: process.env.NEXT_PUBLIC_FIREBASE_APP_ID || "",
+};
+
+// VAPID public key — generated in Firebase Console → Cloud Messaging →
+// Web Push certificates. Set NEXT_PUBLIC_FIREBASE_VAPID_KEY env var.
+const vapidKey = process.env.NEXT_PUBLIC_FIREBASE_VAPID_KEY || "";
+
 /**
- * Request notification permission + register for push on native.
- * Safe to call anywhere — no-op on web.
+ * Request notification permission + register for push.
+ * - Native (Capacitor): uses @capacitor/push-notifications (FCM via Android)
+ * - Web / PWA: uses Firebase JS SDK with a service worker
  */
 export async function registerPush(): Promise<PushRegisterResult> {
-  if (!Capacitor.isNativePlatform()) {
-    return { granted: false, error: "Not a native platform." };
+  if (Capacitor.isNativePlatform()) {
+    return registerNativePush();
   }
+  return registerWebPush();
+}
 
+async function registerNativePush(): Promise<PushRegisterResult> {
   // 1) Ask the user for notification permission
   const perm = await PushNotifications.requestPermissions();
   if (perm.receive !== "granted") {
@@ -39,14 +64,65 @@ export async function registerPush(): Promise<PushRegisterResult> {
   return { granted: true };
 }
 
+async function registerWebPush(): Promise<PushRegisterResult> {
+  if (!vapidKey) {
+    return {
+      granted: false,
+      error:
+        "Web push not configured. Set NEXT_PUBLIC_FIREBASE_VAPID_KEY env var.",
+    };
+  }
+
+  if (!(await fcmIsSupported())) {
+    return { granted: false, error: "Push notifications not supported." };
+  }
+
+  // Check browser permission
+  if (typeof Notification === "undefined") {
+    return { granted: false, error: "Notifications not supported." };
+  }
+
+  let permission = Notification.permission;
+  if (permission !== "granted") {
+    permission = await Notification.requestPermission();
+  }
+  if (permission !== "granted") {
+    return { granted: false, error: "Notification permission denied." };
+  }
+
+  try {
+    // Initialize Firebase (idempotent)
+    const app = getApps()[0] ?? initializeApp(firebaseConfig);
+    const messaging = getMessaging(app);
+
+    // Register the messaging service worker and get an FCM web token
+    const token = await getToken(messaging, {
+      vapidKey,
+      serviceWorkerRegistration: await navigator.serviceWorker.register(
+        "/firebase-messaging-sw.js"
+      ),
+    });
+
+    if (!token) {
+      return { granted: false, error: "Failed to get push token." };
+    }
+
+    // Save the web token on our server (platform: "web")
+    await registerDeviceToken(token, "web");
+
+    return { granted: true, token };
+  } catch (err) {
+    console.error("Web push registration error:", err);
+    return {
+      granted: false,
+      error: err instanceof Error ? err.message : "Push registration failed.",
+    };
+  }
+}
+
 /**
- * Install Capacitor push listeners.
+ * Install Capacitor push listeners (native only).
  * Call once, on the native shell (e.g. from <NativeInit />).
- *
- * Each listener:
- *  - "registration": stores the new/rotated token on the server
- *  - "pushNotificationReceived": optional handler (e.g. show a local banner)
- *  - "pushNotificationActionPerformed": open the relevant group on tap
  */
 export function addPushListeners(
   onNotificationReceived?: (notif: PushNotificationSchema) => void
@@ -73,14 +149,10 @@ export function addPushListeners(
     "pushNotificationReceived",
     (notification: PushNotificationSchema) => {
       onNotificationReceived?.(notification);
-
-      // Show an in-app toast/banner so the user sees it even in the foreground
-      const title = notification.title ?? "New message";
-      const body = notification.body ?? "";
-      // The Capacitor notification shows automatically when received in the
-      // foreground if we don't have a custom notification service; keep a
-      // console trace as a fallback.
-      console.log("Push received:", { title, body });
+      console.log("Push received:", {
+        title: notification.title ?? "New message",
+        body: notification.body ?? "",
+      });
     }
   );
 
@@ -99,13 +171,33 @@ export function addPushListeners(
 }
 
 /**
+ * Install foreground message listener for web/PWA.
+ * Background messages are handled by firebase-messaging-sw.js automatically.
+ */
+export function addWebMessageListener(
+  callback?: (payload: { title?: string; body?: string }) => void
+) {
+  if (Capacitor.isNativePlatform()) return;
+  if (!vapidKey || getApps().length === 0) return;
+
+  try {
+    const messaging = getMessaging(getApps()[0]);
+    onMessage(messaging, (payload) => {
+      callback?.({
+        title: payload.notification?.title,
+        body: payload.notification?.body,
+      });
+    });
+  } catch (err) {
+    console.error("Foreground message listener error:", err);
+  }
+}
+
+/**
  * Send the device token to our server so it can be targeted by FCM.
  * Requires an active session (the /api/devices route is auth-gated).
  */
-export async function registerDeviceToken(
-  token: string,
-  platform = "android"
-) {
+export async function registerDeviceToken(token: string, platform = "android") {
   try {
     await fetch("/api/devices", {
       method: "POST",

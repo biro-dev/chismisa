@@ -75,6 +75,7 @@ type Message = {
   userId: string;
   username: string;
   deletedAt?: string | null;
+  seenCount?: number;
   createdAt: string;
   replyTo: {
     id: string;
@@ -488,6 +489,12 @@ const MessageBubble = memo(function MessageBubble({
           }`}
         >
           {formattedTime}
+          {/* Read receipt — anonymous count of who has seen it */}
+          {isOwn && !msg.deletedAt && (msg.seenCount ?? 0) > 0 && (
+            <span className="ml-1.5 text-emerald-500">
+              Seen by {msg.seenCount}
+            </span>
+          )}
         </p>
       </div>
     </div>

@@ -30,10 +30,11 @@ model Group {
 }
 
 model GroupMember {
-  id       String   @id @default(cuid())
-  userId   String
-  groupId  String
-  joinedAt DateTime @default(now())
+  id         String    @id @default(cuid())
+  userId     String
+  groupId    String
+  lastReadAt DateTime?
+  joinedAt   DateTime  @default(now())
   user     User     @relation(fields: [userId], references: [id], onDelete: Cascade)
   group    Group    @relation(fields: [groupId], references: [id], onDelete: Cascade)
 
