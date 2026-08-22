@@ -26,6 +26,8 @@ import {
   CornerUpLeft,
   Smile,
   Trash2,
+  Sun,
+  Moon,
 } from "lucide-react";
 import { logoutAction } from "@/lib/actions/auth";
 import {
@@ -37,6 +39,7 @@ import {
 import {
   sendMessageAction,
   reactToMessageAction,
+  deleteMessageAction,
 } from "@/lib/actions/messages";
 import { Capacitor } from "@capacitor/core";
 import { Haptics, ImpactStyle } from "@capacitor/haptics";
@@ -71,6 +74,7 @@ type Message = {
   content: string;
   userId: string;
   username: string;
+  deletedAt?: string | null;
   createdAt: string;
   replyTo: {
     id: string;
@@ -89,6 +93,26 @@ type DashboardProps = {
 };
 
 const REACTION_EMOJIS = ["👍", "❤️", "😂", "🎉", "😮"];
+
+// Generate a consistent color from a group name (for avatars)
+const GROUP_COLORS = [
+  "from-purple-600 to-fuchsia-600",
+  "from-blue-600 to-cyan-500",
+  "from-emerald-600 to-teal-500",
+  "from-orange-500 to-amber-500",
+  "from-pink-600 to-rose-500",
+  "from-indigo-600 to-violet-500",
+  "from-red-600 to-orange-500",
+  "from-teal-600 to-emerald-500",
+];
+
+function groupColor(name: string): string {
+  let hash = 0;
+  for (let i = 0; i < name.length; i++) {
+    hash = (hash * 31 + name.charCodeAt(i)) >>> 0;
+  }
+  return GROUP_COLORS[hash % GROUP_COLORS.length];
+}
 
 // Deep-compare reactions to avoid re-rendering bubbles when data didn't change
 const areReactionsEqual = (a: MessageReaction[], b: MessageReaction[]) => {
@@ -144,12 +168,14 @@ const MessageBubble = memo(function MessageBubble({
   userId,
   onReply,
   onReact,
+  onDelete,
 }: {
   msg: Message;
   isOwn: boolean;
   userId: string;
   onReply: (msg: Message) => void;
   onReact: (messageId: string, emoji: string) => void;
+  onDelete: (messageId: string) => void;
 }) {
   const [reactionMenuOpen, setReactionMenuOpen] = useState(false);
   const [highlightedEmoji, setHighlightedEmoji] = useState<string | null>(null);
@@ -322,13 +348,15 @@ const MessageBubble = memo(function MessageBubble({
         </p>
         <div
           className={`msg-bubble-content rounded-2xl px-4 py-2.5 text-sm ${
-            isOwn
+            msg.deletedAt
+              ? "border border-dashed border-zinc-700 italic text-zinc-500"
+              : isOwn
               ? "rounded-br-sm bg-gradient-to-r from-purple-600 to-fuchsia-600 text-white"
               : "rounded-bl-sm bg-zinc-800 text-zinc-100"
           }`}
         >
           {/* Reply indicator */}
-          {msg.replyTo && (
+          {msg.replyTo && !msg.deletedAt && (
             <div
               className={`mb-2 flex items-start gap-1.5 border-l-2 pl-2 text-xs ${
                 isOwn
@@ -347,9 +375,13 @@ const MessageBubble = memo(function MessageBubble({
               </div>
             </div>
           )}
-          <p className="whitespace-pre-wrap break-words">
-            {msg.content}
-          </p>
+          {msg.deletedAt ? (
+            <p className="italic">This message was deleted</p>
+          ) : (
+            <p className="whitespace-pre-wrap break-words">
+              {msg.content}
+            </p>
+          )}
         </div>
 
         {/* Reactions */}
@@ -388,13 +420,25 @@ const MessageBubble = memo(function MessageBubble({
           }`}
         >
           {/* Reply button */}
-          <button
-            onClick={() => onReply(msg)}
-            className="rounded-lg p-1.5 text-zinc-500 transition-colors hover:bg-zinc-800 hover:text-purple-400"
-            title="Reply"
-          >
-            <CornerUpLeft className="h-3.5 w-3.5" />
-          </button>
+          {!msg.deletedAt && (
+            <button
+              onClick={() => onReply(msg)}
+              className="rounded-lg p-1.5 text-zinc-500 transition-colors hover:bg-zinc-800 hover:text-purple-400"
+              title="Reply"
+            >
+              <CornerUpLeft className="h-3.5 w-3.5" />
+            </button>
+          )}
+          {/* Delete button — only on own messages that aren't already deleted */}
+          {isOwn && !msg.deletedAt && (
+            <button
+              onClick={() => onDelete(msg.id)}
+              className="rounded-lg p-1.5 text-zinc-500 transition-colors hover:bg-zinc-800 hover:text-red-400"
+              title="Delete message"
+            >
+              <Trash2 className="h-3.5 w-3.5" />
+            </button>
+          )}
           {/* Reaction button - hold and slide on touch, click on desktop */}
           <button
             onPointerDown={handlePointerDown}
@@ -496,6 +540,8 @@ export function Dashboard({
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [replyTo, setReplyTo] = useState<Message | null>(null);
   const [actionError, setActionError] = useState("");
+  // Theme: "dark" (default) or "light", persisted in localStorage
+  const [theme, setTheme] = useState<"dark" | "light">("dark");
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const scrollContainerRef = useRef<HTMLDivElement>(null);
   const isNearBottomRef = useRef(true);
@@ -522,6 +568,22 @@ export function Dashboard({
     undefined
   );
   const [, startTransition] = useTransition();
+
+  // Load saved theme on mount and apply it
+  useEffect(() => {
+    const saved = localStorage.getItem("chismisa-theme");
+    if (saved === "light" || saved === "dark") {
+      setTheme(saved);
+      document.documentElement.setAttribute("data-theme", saved);
+    }
+  }, []);
+
+  const toggleTheme = () => {
+    const next = theme === "dark" ? "light" : "dark";
+    setTheme(next);
+    localStorage.setItem("chismisa-theme", next);
+    document.documentElement.setAttribute("data-theme", next);
+  };
 
   // Load older messages when the user scrolls to the top (Messenger-style).
   // Uses cursor-based pagination via the `before` timestamp.
@@ -814,10 +876,58 @@ export function Dashboard({
     [selectedGroupId, userId, username]
   );
 
+  // Delete a message (own messages only) — optimistic update
+  const handleDeleteMessage = useCallback(
+    async (messageId: string) => {
+      const groupId = selectedGroupId;
+      if (!groupId) return;
+
+      // Optimistic: mark as deleted locally
+      setMessages((prev) =>
+        prev.map((m) =>
+          m.id === messageId
+            ? { ...m, deletedAt: new Date().toISOString(), content: "" }
+            : m
+        )
+      );
+
+      try {
+        const result = await deleteMessageAction(messageId);
+        if (!result.success) {
+          setActionError(result.error || "Failed to delete message.");
+          // Refetch to rollback
+          const res = await fetch(`/api/messages?groupId=${groupId}`, {
+            cache: "no-store",
+          });
+          if (res.ok) {
+            const data = await res.json();
+            setMessages(data);
+          }
+        }
+      } catch {
+        setActionError("Failed to delete message.");
+      }
+    },
+    [selectedGroupId]
+  );
+
   const copyInviteCode = async () => {
     if (!selectedGroup) return;
     try {
       await navigator.clipboard.writeText(selectedGroup.code);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2000);
+    } catch {
+      // clipboard not available
+    }
+  };
+
+  // Copy a shareable invite link (auto-joins when opened)
+  const copyInviteLink = async () => {
+    if (!selectedGroup) return;
+    try {
+      const link = `${window.location.origin}/join/${selectedGroup.code}`;
+      await navigator.clipboard.writeText(link);
       setCopied(true);
       setTimeout(() => setCopied(false), 2000);
     } catch {
@@ -997,15 +1107,32 @@ export function Dashboard({
               <p className="text-xs text-zinc-500">Anonymous user</p>
             </div>
           </div>
-          <form action={logoutAction}>
+          <div className="flex items-center gap-1">
             <button
-              type="submit"
-              title="Log out"
-              className="rounded-lg p-2 text-zinc-400 transition-colors hover:bg-zinc-800 hover:text-red-400"
+              onClick={toggleTheme}
+              title={
+                theme === "dark"
+                  ? "Switch to light mode"
+                  : "Switch to dark mode"
+              }
+              className="rounded-lg p-2 text-zinc-400 transition-colors hover:bg-zinc-800 hover:text-amber-400"
             >
-              <LogOut className="h-4 w-4" />
+              {theme === "dark" ? (
+                <Sun className="h-4 w-4" />
+              ) : (
+                <Moon className="h-4 w-4" />
+              )}
             </button>
-          </form>
+            <form action={logoutAction}>
+              <button
+                type="submit"
+                title="Log out"
+                className="rounded-lg p-2 text-zinc-400 transition-colors hover:bg-zinc-800 hover:text-red-400"
+              >
+                <LogOut className="h-4 w-4" />
+              </button>
+            </form>
+          </div>
         </div>
 
         {/* Create / Join buttons */}
@@ -1057,13 +1184,13 @@ export function Dashboard({
                   }`}
                 >
                   <div
-                    className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-lg ${
-                      selectedGroupId === group.id
-                        ? "bg-purple-600/30"
-                        : "bg-zinc-800"
-                    }`}
+                    className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-gradient-to-br ${groupColor(
+                      group.name
+                    )}`}
                   >
-                    <Hash className="h-4 w-4" />
+                    <span className="text-sm font-bold text-white">
+                      {group.name.charAt(0).toUpperCase()}
+                    </span>
                   </div>
                   <div className="min-w-0 flex-1">
                     <p className="truncate text-sm font-medium">{group.name}</p>
@@ -1120,8 +1247,14 @@ export function Dashboard({
             {/* Chat header */}
             <div className="flex items-center justify-between border-b border-zinc-800/60 px-5 py-3">
               <div className="flex items-center gap-3">
-                <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-gradient-to-br from-purple-600 to-fuchsia-600">
-                  <Hash className="h-5 w-5 text-white" />
+                <div
+                  className={`flex h-10 w-10 items-center justify-center rounded-lg bg-gradient-to-br ${groupColor(
+                    selectedGroup.name
+                  )}`}
+                >
+                  <span className="text-base font-bold text-white">
+                    {selectedGroup.name.charAt(0).toUpperCase()}
+                  </span>
                 </div>
                 <div>
                   <h2 className="text-sm font-semibold text-zinc-100">
@@ -1211,6 +1344,7 @@ export function Dashboard({
                       userId={userId}
                       onReply={handleReply}
                       onReact={handleReact}
+                      onDelete={handleDeleteMessage}
                     />
                   ))}
                   <div ref={messagesEndRef} />
@@ -1413,6 +1547,12 @@ export function Dashboard({
                 )}
               </button>
             </div>
+            <button
+              onClick={copyInviteLink}
+              className="w-full rounded-xl border border-zinc-700 py-2.5 text-sm font-semibold text-zinc-300 transition-colors hover:bg-zinc-800"
+            >
+              Copy Invite Link
+            </button>
             {copied && (
               <p className="text-center text-xs text-emerald-400">
                 Copied to clipboard!

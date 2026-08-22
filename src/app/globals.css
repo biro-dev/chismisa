@@ -18,6 +18,79 @@ body {
   font-family: var(--font-sans), Arial, Helvetica, sans-serif;
 }
 
+/* Light theme overrides — applied via [data-theme="light"] on <html> */
+[data-theme="light"] {
+  --background: #f4f1fa;
+  --foreground: #1a1425;
+}
+
+[data-theme="light"] body {
+  background: #f4f1fa;
+  color: #1a1425;
+}
+
+[data-theme="light"] .bg-\[\#0a0612\] {
+  background: #f4f1fa !important;
+}
+
+[data-theme="light"] .bg-\[\#0d0818\] {
+  background: #ece7f5 !important;
+}
+
+[data-theme="light"] .bg-\[\#120a1f\] {
+  background: #ffffff !important;
+}
+
+[data-theme="light"] .bg-\[\#150d24\] {
+  background: #ffffff !important;
+}
+
+[data-theme="light"] .text-zinc-100 {
+  color: #1a1425 !important;
+}
+
+[data-theme="light"] .text-zinc-200 {
+  color: #2a2138 !important;
+}
+
+[data-theme="light"] .text-zinc-300 {
+  color: #3d3452 !important;
+}
+
+[data-theme="light"] .text-zinc-400 {
+  color: #5a5170 !important;
+}
+
+[data-theme="light"] .text-zinc-500 {
+  color: #6e6584 !important;
+}
+
+[data-theme="light"] .border-zinc-800\/60,
+[data-theme="light"] .border-zinc-800 {
+  border-color: #d8d2e8 !important;
+}
+
+[data-theme="light"] .border-zinc-700\/60,
+[data-theme="light"] .border-zinc-700 {
+  border-color: #c5bed8 !important;
+}
+
+[data-theme="light"] .bg-zinc-800 {
+  background: #e4def0 !important;
+}
+
+[data-theme="light"] .bg-zinc-900\/60 {
+  background: #ffffff !important;
+}
+
+[data-theme="light"] ::-webkit-scrollbar-track {
+  background: #e4def0;
+}
+
+[data-theme="light"] ::-webkit-scrollbar-thumb {
+  background: #b8aed0;
+}
+
 /* Custom scrollbar for the dark theme */
 ::-webkit-scrollbar {
   width: 8px;

@@ -277,6 +277,47 @@ export async function reactToMessageAction(
   }
 }
 
+export async function deleteMessageAction(
+  messageId: string
+): Promise<MessageResult> {
+  const session = await getSession();
+  if (!session) return { error: "Not authenticated." };
+
+  try {
+    const message = await db.message.findUnique({
+      where: { id: messageId },
+    });
+    if (!message) return { error: "Message not found." };
+
+    // Only the sender (or the group owner) can delete
+    const group = await db.group.findUnique({
+      where: { id: message.groupId },
+      select: { ownerId: true },
+    });
+
+    const canDelete =
+      message.userId === session.userId || group?.ownerId === session.userId;
+    if (!canDelete) {
+      return { error: "You can only delete your own messages." };
+    }
+
+    if (message.deletedAt) {
+      return { success: true }; // already deleted
+    }
+
+    await db.message.update({
+      where: { id: messageId },
+      data: { deletedAt: new Date() },
+    });
+
+    revalidatePath("/");
+    return { success: true };
+  } catch (err) {
+    console.error("Delete message error:", err);
+    return { error: "Failed to delete message." };
+  }
+}
+
 export async function getMessages(groupId: string) {
   const session = await getSession();
   if (!session) return [];
@@ -324,12 +365,14 @@ export async function getMessages(groupId: string) {
 
   return messages.map((m) => ({
     id: m.id,
-    content: m.content,
+    // Deleted messages show a placeholder instead of their content
+    content: m.deletedAt ? "" : m.content,
     userId: m.userId,
     // Anonymous chat: only the sender sees their own username; everyone
     // else sees "Anonymous". The admin panel uses a separate action that
     // still exposes real usernames.
     username: m.userId === session.userId ? m.user.username : "Anonymous",
+    deletedAt: m.deletedAt ? m.deletedAt.toISOString() : null,
     createdAt: m.createdAt.toISOString(),
     replyTo: m.replyTo
       ? {

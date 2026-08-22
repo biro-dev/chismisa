@@ -38,6 +38,19 @@ export async function GET(request: NextRequest) {
     return NextResponse.json({ error: "Forbidden" }, { status: 403 });
   }
 
+  // Message history limit: purge messages older than 30 days.
+  // Runs with ~2% probability per request to avoid overhead on every poll.
+  if (Math.random() < 0.02) {
+    try {
+      const cutoff = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000);
+      await db.message.deleteMany({
+        where: { groupId, createdAt: { lt: cutoff } },
+      });
+    } catch {
+      // ignore purge errors — non-critical
+    }
+  }
+
   const messages = await db.message.findMany({
     where: {
       groupId,
@@ -74,12 +87,14 @@ export async function GET(request: NextRequest) {
   return NextResponse.json(
     messages.map((m) => ({
       id: m.id,
-      content: m.content,
+      // Deleted messages show a placeholder instead of their content
+      content: m.deletedAt ? "" : m.content,
       userId: m.userId,
       // Anonymous chat: only the sender sees their own username; everyone
       // else sees "Anonymous". The admin panel uses a separate action that
       // still exposes real usernames.
       username: m.userId === session.userId ? m.user.username : "Anonymous",
+      deletedAt: m.deletedAt ? m.deletedAt.toISOString() : null,
       createdAt: m.createdAt.toISOString(),
       replyTo: m.replyTo
         ? {
