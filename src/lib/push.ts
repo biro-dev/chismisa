@@ -26,12 +26,12 @@ let _listenersInstalled = false;
 
 // Firebase web config — public values, safe to expose client-side.
 const firebaseConfig = {
-  apiKey: "AIzaSyDsWFZWCZ0Qnqt1veZdl-8rttkp7h13IZA",
+  apiKey: "AIzaSyBxSIDjdwGirCjH8kvhpIUEwkQmRg8Hj3Y",
   authDomain: "chismisa-fd9b8.firebaseapp.com",
   projectId: "chismisa-fd9b8",
   storageBucket: "chismisa-fd9b8.firebasestorage.app",
   messagingSenderId: "125114823607",
-  appId: process.env.NEXT_PUBLIC_FIREBASE_APP_ID || "",
+  appId: process.env.NEXT_PUBLIC_FIREBASE_APP_ID || "1:125114823607:web:f912492a40e761b01aae32",
 };
 
 // VAPID public key — generated in Firebase Console → Cloud Messaging →

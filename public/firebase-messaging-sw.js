@@ -6,12 +6,12 @@ importScripts("https://www.gstatic.com/firebasejs/10.14.1/firebase-messaging-com
 // Firebase config — public values, safe to expose client-side.
 // Project: chismisa-fd9b8
 firebase.initializeApp({
-  apiKey: "AIzaSyDsWFZWCZ0Qnqt1veZdl-8rttkp7h13IZA",
+  apiKey: "AIzaSyBxSIDjdwGirCjH8kvhpIUEwkQmRg8Hj3Y",
   authDomain: "chismisa-fd9b8.firebaseapp.com",
   projectId: "chismisa-fd9b8",
   storageBucket: "chismisa-fd9b8.firebasestorage.app",
   messagingSenderId: "125114823607",
-  appId: "1:125114823607:web:REPLACE-WITH-WEB-APP-ID",
+  appId: "1:125114823607:web:f912492a40e761b01aae32",
 });
 
 const messaging = firebase.messaging();
