@@ -66,9 +66,6 @@ function getPusher(): Pusher | null {
     cluster,
     authEndpoint: "/api/pusher/auth",
     authTransport: "ajax",
-    auth: {
-      headers: { "Content-Type": "application/json" },
-    },
   });
 
   return pusher;

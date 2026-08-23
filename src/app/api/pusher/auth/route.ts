@@ -21,9 +21,22 @@ export async function POST(request: NextRequest) {
   }
 
   try {
-    const body = await request.json();
-    const channel: string = body.channel_name;
-    const socketId: string = body.socket_id;
+    // pusher-js sends channel authorization as `application/x-www-form-urlencoded`
+    // (socket_id + channel_name), but some clients may POST JSON. Parse both.
+    const raw = await request.text();
+    let channel: string | undefined;
+    let socketId: string | undefined;
+    const contentType = request.headers.get("content-type") || "";
+
+    if (contentType.includes("application/json")) {
+      const body = JSON.parse(raw || "{}");
+      channel = body.channel_name;
+      socketId = body.socket_id;
+    } else {
+      const params = new URLSearchParams(raw || "");
+      channel = params.get("channel_name") || undefined;
+      socketId = params.get("socket_id") || undefined;
+    }
 
     if (!channel || !socketId) {
       return NextResponse.json({ error: "Missing channel_name or socket_id" }, { status: 400 });

@@ -584,6 +584,9 @@ export function Dashboard({
   const [typingUsers, setTypingUsers] = useState<Set<string>>(new Set());
   const [onlineCount, setOnlineCount] = useState<number>(0);
   const typingTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  // Debounce typing broadcasts so long messages don't fire one per keystroke
+  const typingSentAtRef = useRef(0);
+  const TYPING_DEBOUNCE_MS = 2000;
   // Theme: "dark" (default) or "light", persisted in localStorage.
   // useSyncExternalStore resolves the saved theme on the client without
   // a post-hydration setState cascade.
@@ -1542,8 +1545,13 @@ export function Dashboard({
                   value={messageInput}
                   onChange={(e) => {
                     setMessageInput(e.target.value);
-                    if (e.target.value.trim() && selectedGroup) {
-                      sendTyping(selectedGroup.id);
+                    const value = e.target.value.trim();
+                    if (value && selectedGroup) {
+                      const now = Date.now();
+                      if (now - typingSentAtRef.current >= TYPING_DEBOUNCE_MS) {
+                        typingSentAtRef.current = now;
+                        sendTyping(selectedGroup.id);
+                      }
                     }
                   }}
                   placeholder={`Message #${selectedGroup.name}…`}
