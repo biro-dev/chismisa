@@ -1,0 +1,68 @@
+import { NextRequest, NextResponse } from "next/server";
+import { getSession } from "@/lib/session";
+import { db } from "@/lib/db";
+import { getPusherServer } from "@/lib/pusher";
+
+// Pusher auth endpoint for private + presence channels.
+// Verifies the user is logged in AND a member of the requested group.
+export async function POST(request: NextRequest) {
+  const session = await getSession();
+  if (!session) {
+    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  }
+
+  const pusher = getPusherServer();
+  if (!pusher) {
+    return NextResponse.json({ error: "Real-time not configured" }, { status: 503 });
+  }
+
+  try {
+    const body = await request.json();
+    const channel: string = body.channel_name;
+    const socketId: string = body.socket_id;
+
+    if (!channel || !socketId) {
+      return NextResponse.json({ error: "Missing channel_name or socket_id" }, { status: 400 });
+    }
+
+    // Only allow subscription to channels for groups the user is a member of.
+    // Channel format: private-group-{groupId} or presence-group-{groupId}
+    const privateMatch = channel.match(/^private-group-(.+)$/);
+    const presenceMatch = channel.match(/^presence-group-(.+)$/);
+
+    const groupId = (privateMatch || presenceMatch)?.[1];
+    if (!groupId) {
+      return NextResponse.json({ error: "Invalid channel name" }, { status: 400 });
+    }
+
+    const isMember = await db.groupMember.findUnique({
+      where: {
+        userId_groupId: {
+          userId: session.userId,
+          groupId,
+        },
+      },
+      select: { id: true },
+    });
+
+    if (!isMember) {
+      return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+    }
+
+    // For presence channels, Pusher needs a unique user ID and optional user_info.
+    let presenceData: { user_id: string; user_info?: Record<string, unknown> } | undefined;
+    if (presenceMatch) {
+      presenceData = {
+        user_id: session.userId,
+        user_info: { username: session.username },
+      };
+    }
+
+    const auth = pusher.authorizeChannel(socketId, channel, presenceData);
+    return NextResponse.json(auth);
+  } catch (err) {
+    console.error("Pusher auth error:", err);
+    return NextResponse.json({ error: "Auth failed" }, { status: 500 });
+  }
+}
+      

@@ -4,6 +4,7 @@ import { revalidatePath } from "next/cache";
 import { db } from "@/lib/db";
 import { getSession } from "@/lib/session";
 import { getMessaging } from "@/lib/firebase";
+import { triggerGroupEvent } from "@/lib/pusher";
 
 export type MessageResult = {
   error?: string;
@@ -188,24 +189,32 @@ export async function sendMessageAction(formData: FormData): Promise<MessageResu
       content
     ).catch((err) => console.error("FCM notification error:", err));
 
+    // Build the message payload (shared between return value and realtime broadcast)
+    const messagePayload = {
+      id: created.id,
+      content: created.content,
+      userId: created.userId,
+      username: created.user.username,
+      createdAt: created.createdAt.toISOString(),
+      replyTo: created.replyTo
+        ? {
+            id: created.replyTo.id,
+            content: created.replyTo.content,
+            username: created.replyTo.user.username,
+          }
+        : null,
+      reactions: [],
+    };
+
+    // Broadcast to other group members via real-time (non-blocking)
+    triggerGroupEvent(groupId, "new-message", {
+      message: messagePayload,
+    });
+
     revalidatePath("/");
     return {
       success: true,
-      message: {
-        id: created.id,
-        content: created.content,
-        userId: created.userId,
-        username: created.user.username,
-        createdAt: created.createdAt.toISOString(),
-        replyTo: created.replyTo
-          ? {
-              id: created.replyTo.id,
-              content: created.replyTo.content,
-              username: created.replyTo.user.username,
-            }
-          : null,
-        reactions: [],
-      },
+      message: messagePayload,
     };
   } catch (err) {
     console.error("Send message error:", err);
@@ -269,6 +278,23 @@ export async function reactToMessageAction(
       });
     }
 
+    // Fetch the updated reactions to broadcast the full current state
+    const updatedReactions = await db.messageReaction.findMany({
+      where: { messageId },
+      include: { user: { select: { id: true, username: true } } },
+    });
+
+    // Broadcast the updated reactions via real-time (non-blocking)
+    triggerGroupEvent(message.groupId, "reaction-updated", {
+      messageId,
+      reactions: updatedReactions.map((r) => ({
+        id: r.id,
+        emoji: r.emoji,
+        userId: r.userId,
+        username: r.user.username,
+      })),
+    });
+
     revalidatePath("/");
     return { success: true };
   } catch (err) {
@@ -308,6 +334,11 @@ export async function deleteMessageAction(
     await db.message.update({
       where: { id: messageId },
       data: { deletedAt: new Date() },
+    });
+
+    // Broadcast deletion to other group members via real-time (non-blocking)
+    triggerGroupEvent(message.groupId, "message-deleted", {
+      messageId,
     });
 
     revalidatePath("/");

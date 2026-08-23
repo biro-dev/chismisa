@@ -43,6 +43,13 @@ import {
 } from "@/lib/actions/messages";
 import { Capacitor } from "@capacitor/core";
 import { Haptics, ImpactStyle } from "@capacitor/haptics";
+import {
+  setRealtimeHandlers,
+  subscribeToGroup,
+  subscribeToPresence,
+  unsubscribeFromGroup,
+  sendTyping,
+} from "@/lib/realtime";
 
 type Group = {
   id: string;
@@ -69,7 +76,7 @@ type MessageReaction = {
   username: string;
 };
 
-type Message = {
+export type Message = {
   id: string;
   content: string;
   userId: string;
@@ -131,7 +138,7 @@ const areReactionsEqual = (a: MessageReaction[], b: MessageReaction[]) => {
 };
 
 // Custom memo comparator — only re-renders a bubble when its own data changed.
-// This prevents every bubble from re-rendering on each 2s poll.
+  // This prevents every bubble from re-rendering on each 30s poll.
 const messageBubbleAreEqual = (
   prev: {
     msg: Message;
@@ -547,6 +554,10 @@ export function Dashboard({
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [replyTo, setReplyTo] = useState<Message | null>(null);
   const [actionError, setActionError] = useState("");
+  // Real-time state
+  const [typingUsers, setTypingUsers] = useState<Set<string>>(new Set());
+  const [onlineCount, setOnlineCount] = useState<number>(0);
+  const typingTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   // Theme: "dark" (default) or "light", persisted in localStorage
   const [theme, setTheme] = useState<"dark" | "light">("dark");
   const messagesEndRef = useRef<HTMLDivElement>(null);
@@ -710,7 +721,8 @@ export function Dashboard({
 
     // Initial fetch (no `since` — gets the full history)
     poll();
-    interval = setInterval(poll, 2000);
+    // Slow backup poll — real-time via Pusher is the primary path.
+    interval = setInterval(poll, 30000);
 
     // Resume polling immediately when the tab becomes visible again
     const onVisibility = () => {
@@ -723,6 +735,82 @@ export function Dashboard({
       document.removeEventListener("visibilitychange", onVisibility);
     };
   }, [selectedGroupId]);
+
+  // Real-time subscriptions — joins the group's private + presence channels
+  // on Pusher. Falls back to the 30s poll above if Pusher isn't configured.
+  useEffect(() => {
+    const groupId = selectedGroupId;
+    if (!groupId) return;
+
+    // Register callback handlers once (they close over stable callbacks/setters)
+    setRealtimeHandlers({
+      onNewMessage: (msg) => {
+        setMessages((prev) => {
+          if (prev.some((m) => m.id === msg.id)) return prev;
+          const merged = [...prev, msg].sort(
+            (a, b) =>
+              new Date(a.createdAt).getTime() -
+              new Date(b.createdAt).getTime()
+          );
+          lastMessageTimeRef.current = msg.createdAt;
+          return merged;
+        });
+      },
+      onMessageDeleted: (messageId) => {
+        setMessages((prev) =>
+          prev.map((m) =>
+            m.id === messageId
+              ? { ...m, deletedAt: new Date().toISOString(), content: "" }
+              : m
+          )
+        );
+      },
+      onReactionUpdated: (messageId, reactions) => {
+        setMessages((prev) =>
+          prev.map((m) =>
+            m.id === messageId ? { ...m, reactions } : m
+          )
+        );
+      },
+      onTyping: (typerUserId) => {
+        setTypingUsers((prev) => {
+          if (typerUserId === userId) return prev; // don't show "you are typing"
+          const next = new Set(prev);
+          next.add(typerUserId);
+          return next;
+        });
+        // Auto-hide typing indicator after 3s of no events
+        if (typingTimeoutRef.current) clearTimeout(typingTimeoutRef.current);
+        typingTimeoutRef.current = setTimeout(() => {
+          setTypingUsers((prev) => {
+            if (typerUserId === userId) return prev;
+            const next = new Set(prev);
+            next.delete(typerUserId);
+            return next;
+          });
+        }, 3000);
+      },
+      onPresenceChange: (count) => {
+        setOnlineCount(count);
+      },
+    });
+
+    // Subscribe to private channel (messages, reactions, deletions, typing)
+    subscribeToGroup(groupId);
+    // Subscribe to presence channel (online count)
+    const presence = subscribeToPresence(groupId);
+    // If presence couldn't subscribe yet (auth pending), fetch count via poll fallback
+    if (!presence) {
+      fetch(`/api/messages?groupId=${groupId}`, {
+        cache: "no-store",
+      }).catch(() => {});
+    }
+
+    return () => {
+      unsubscribeFromGroup(groupId);
+      if (typingTimeoutRef.current) clearTimeout(typingTimeoutRef.current);
+    };
+  }, [selectedGroupId, userId]);
 
   // Smart auto-scroll — only scrolls to bottom if the user is already near it.
   // Uses direct scrollTop + rAF instead of scrollIntoView for smoother, cheaper scrolling.
@@ -1268,7 +1356,11 @@ export function Dashboard({
                     {selectedGroup.name}
                   </h2>
                   <p className="text-xs text-zinc-500">
-                    {selectedGroup.memberCount} members
+                    {selectedGroup.memberCount} members{onlineCount > 0 && (
+                      <span className="ml-1.5">
+                        · <span className="text-emerald-400">🟢 {onlineCount} online</span>
+                      </span>
+                    )}
                   </p>
                 </div>
               </div>
@@ -1354,6 +1446,12 @@ export function Dashboard({
                       onDelete={handleDeleteMessage}
                     />
                   ))}
+                  {/* Typing indicator — shows when other users are typing */}
+                  {typingUsers.size > 0 && (
+                    <div className="px-1 py-2 text-xs text-zinc-400 animate-pulse">
+                      Someone is typing...
+                    </div>
+                  )}
                   <div ref={messagesEndRef} />
                 </div>
               )}
@@ -1409,7 +1507,12 @@ export function Dashboard({
                 <input
                   type="text"
                   value={messageInput}
-                  onChange={(e) => setMessageInput(e.target.value)}
+                  onChange={(e) => {
+                    setMessageInput(e.target.value);
+                    if (e.target.value.trim() && selectedGroup) {
+                      sendTyping(selectedGroup.id);
+                    }
+                  }}
                   placeholder={`Message #${selectedGroup.name}…`}
                   maxLength={2000}
                   className="flex-1 rounded-xl border border-zinc-700/60 bg-zinc-900/60 px-4 py-2.5 text-sm text-zinc-100 placeholder-zinc-500 outline-none transition-colors focus:border-purple-500 focus:ring-2 focus:ring-purple-500/20"
