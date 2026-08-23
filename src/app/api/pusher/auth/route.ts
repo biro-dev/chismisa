@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { getSession } from "@/lib/session";
 import { db } from "@/lib/db";
 import { getPusherServer } from "@/lib/pusher";
+import { checkRateLimit } from "@/lib/rate-limit";
 
 // Pusher auth endpoint for private + presence channels.
 // Verifies the user is logged in AND a member of the requested group.
@@ -10,6 +11,9 @@ export async function POST(request: NextRequest) {
   if (!session) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
+
+  const limited = checkRateLimit(`pusher-auth:${session.userId}`, 60);
+  if (limited) return limited;
 
   const pusher = getPusherServer();
   if (!pusher) {

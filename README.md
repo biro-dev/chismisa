@@ -15,7 +15,7 @@ Anonymous real-time group chat. Create a group, share the invite code, and start
 
 ### Prerequisites
 
-- Node.js 20+
+- Node.js 22.12+ (pinned to satisfy the Prisma 7.9.1 preinstall check)
 - PostgreSQL database (local or hosted — e.g. Supabase, Neon, Vercel Postgres)
 
 ### Local Development

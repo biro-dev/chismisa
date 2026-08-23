@@ -1,6 +1,7 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
+import { after } from "next/server";
 import { db } from "@/lib/db";
 import { getSession } from "@/lib/session";
 import { getMessaging } from "@/lib/firebase";
@@ -30,8 +31,8 @@ export type MessageResult = {
 };
 
 // Send an FCM push notification to every group member that has a registered
-// device token, excluding the sender. Called (but not awaited) after a message
-// is created so the chat stays snappy.
+// device token, excluding the sender. Invoked from an `after()` callback so it
+// runs after the response is sent but doesn't block the sender's action.
 export async function sendGroupMessagePush(
   groupId: string,
   senderId: string,
@@ -181,14 +182,6 @@ export async function sendMessageAction(formData: FormData): Promise<MessageResu
       },
     });
 
-    // Send FCM push notifications to every other group member's devices
-    sendGroupMessagePush(
-      groupId,
-      session.userId,
-      created.user.username,
-      content
-    ).catch((err) => console.error("FCM notification error:", err));
-
     // Build the message payload (shared between return value and realtime broadcast)
     const messagePayload = {
       id: created.id,
@@ -206,9 +199,20 @@ export async function sendMessageAction(formData: FormData): Promise<MessageResu
       reactions: [],
     };
 
-    // Broadcast to other group members via real-time (non-blocking)
-    triggerGroupEvent(groupId, "new-message", {
-      message: messagePayload,
+    // Send the FCM push + realtime broadcast AFTER the response is sent.
+    // `after()` keeps the serverless invocation alive (waitUntil on Vercel)
+    // so these side-effects aren't silently dropped when the action returns.
+    after(() => {
+      sendGroupMessagePush(
+        groupId,
+        session.userId,
+        created.user.username,
+        content
+      ).catch((err) => console.error("FCM notification error:", err));
+
+      triggerGroupEvent(groupId, "new-message", {
+        message: messagePayload,
+      });
     });
 
     revalidatePath("/");
@@ -284,15 +288,18 @@ export async function reactToMessageAction(
       include: { user: { select: { id: true, username: true } } },
     });
 
-    // Broadcast the updated reactions via real-time (non-blocking)
-    triggerGroupEvent(message.groupId, "reaction-updated", {
-      messageId,
-      reactions: updatedReactions.map((r) => ({
-        id: r.id,
-        emoji: r.emoji,
-        userId: r.userId,
-        username: r.user.username,
-      })),
+    // Broadcast the updated reactions via real-time - scheduled after the
+    // response so the serverless invocation isn't cut short mid-trigger.
+    after(() => {
+      triggerGroupEvent(message.groupId, "reaction-updated", {
+        messageId,
+        reactions: updatedReactions.map((r) => ({
+          id: r.id,
+          emoji: r.emoji,
+          userId: r.userId,
+          username: r.user.username,
+        })),
+      });
     });
 
     revalidatePath("/");
@@ -336,9 +343,12 @@ export async function deleteMessageAction(
       data: { deletedAt: new Date() },
     });
 
-    // Broadcast deletion to other group members via real-time (non-blocking)
-    triggerGroupEvent(message.groupId, "message-deleted", {
-      messageId,
+    // Broadcast deletion to other group members via real-time - scheduled
+    // after the response so it survives serverless teardown.
+    after(() => {
+      triggerGroupEvent(message.groupId, "message-deleted", {
+        messageId,
+      });
     });
 
     revalidatePath("/");

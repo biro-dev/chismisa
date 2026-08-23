@@ -1,4 +1,4 @@
-("use client" as const);
+"use client";
 
 import { Capacitor } from "@capacitor/core";
 import {
@@ -162,9 +162,14 @@ export function addPushListeners(
       // When the user taps a notification, jump to the relevant group
       const groupId = action.notification?.data?.groupId as string | undefined;
       if (groupId) {
-        window.location.href = `/?group=${groupId}`;
+        // Full-page navigation - the Capacitor push listener has no
+        // router context. Build an absolute URL (satisfies the lint rule).
+        window.location.href = new URL(
+          `/?group=${groupId}`,
+          window.location.origin
+        ).href;
       } else {
-        window.location.href = "/";
+        window.location.href = new URL("/", window.location.origin).href;
       }
     }
   );

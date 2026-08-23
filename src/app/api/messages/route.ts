@@ -1,12 +1,17 @@
 import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/lib/db";
 import { getSession } from "@/lib/session";
+import { checkRateLimit } from "@/lib/rate-limit";
 
 export async function GET(request: NextRequest) {
   const session = await getSession();
   if (!session) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
+
+  // Polling every ~2s plus history loads — allow a generous per-user budget
+  const limited = checkRateLimit(`messages:${session.userId}`, 240);
+  if (limited) return limited;
 
   const groupId = request.nextUrl.searchParams.get("groupId");
   if (!groupId) {

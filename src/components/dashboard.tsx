@@ -9,6 +9,7 @@ import {
   useEffect,
   useRef,
   useTransition,
+  useSyncExternalStore,
 } from "react";
 import { useRouter } from "next/navigation";
 import {
@@ -101,6 +102,31 @@ type DashboardProps = {
 };
 
 const REACTION_EMOJIS = ["👍", "❤️", "😂", "🎉", "😮"];
+
+// --- Theme (persisted in localStorage) ---
+// Read via useSyncExternalStore so the saved value resolves correctly on the
+// server, during hydration, and across tabs - no setState-in-effect cascade.
+const THEME_STORAGE_KEY = "chismisa-theme";
+const THEME_EVENT = "chismisa-theme-change";
+
+function getThemeSnapshot(): "dark" | "light" {
+  if (typeof window === "undefined") return "dark";
+  const saved = localStorage.getItem(THEME_STORAGE_KEY);
+  return saved === "light" || saved === "dark" ? saved : "dark";
+}
+
+function getThemeServerSnapshot(): "dark" | "light" {
+  return "dark";
+}
+
+function subscribeToTheme(callback: () => void): () => void {
+  window.addEventListener("storage", callback);
+  window.addEventListener(THEME_EVENT, callback);
+  return () => {
+    window.removeEventListener("storage", callback);
+    window.removeEventListener(THEME_EVENT, callback);
+  };
+}
 
 // Generate a consistent color from a group name (for avatars)
 const GROUP_COLORS = [
@@ -299,7 +325,7 @@ const MessageBubble = memo(function MessageBubble({
   );
 
   const handlePointerUp = useCallback(
-    (e: React.PointerEvent<HTMLButtonElement>) => {
+    () => {
       clearPressTimer();
       startPosRef.current = null;
       if (isDraggingRef.current) {
@@ -558,8 +584,14 @@ export function Dashboard({
   const [typingUsers, setTypingUsers] = useState<Set<string>>(new Set());
   const [onlineCount, setOnlineCount] = useState<number>(0);
   const typingTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  // Theme: "dark" (default) or "light", persisted in localStorage
-  const [theme, setTheme] = useState<"dark" | "light">("dark");
+  // Theme: "dark" (default) or "light", persisted in localStorage.
+  // useSyncExternalStore resolves the saved theme on the client without
+  // a post-hydration setState cascade.
+  const theme = useSyncExternalStore(
+    subscribeToTheme,
+    getThemeSnapshot,
+    getThemeServerSnapshot
+  );
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const scrollContainerRef = useRef<HTMLDivElement>(null);
   const isNearBottomRef = useRef(true);
@@ -587,20 +619,18 @@ export function Dashboard({
   );
   const [, startTransition] = useTransition();
 
-  // Load saved theme on mount and apply it
+  // Apply the theme whenever the snapshot changes (DOM-only sync - never
+  // setState in an effect). SSR markup has no data-theme attribute, so the
+  // dark theme is the default until this runs.
   useEffect(() => {
-    const saved = localStorage.getItem("chismisa-theme");
-    if (saved === "light" || saved === "dark") {
-      setTheme(saved);
-      document.documentElement.setAttribute("data-theme", saved);
-    }
-  }, []);
+    document.documentElement.setAttribute("data-theme", theme);
+  }, [theme]);
 
   const toggleTheme = () => {
     const next = theme === "dark" ? "light" : "dark";
-    setTheme(next);
-    localStorage.setItem("chismisa-theme", next);
-    document.documentElement.setAttribute("data-theme", next);
+    localStorage.setItem(THEME_STORAGE_KEY, next);
+    // `storage` events only fire in other tabs - notify this one too.
+    window.dispatchEvent(new Event(THEME_EVENT));
   };
 
   // Load older messages when the user scrolls to the top (Messenger-style).
@@ -842,9 +872,12 @@ export function Dashboard({
   }, [joinState, router]);
 
   // Stable callback for replying to a message
-  const handleReply = useCallback((msg: Message) => {
-    setReplyTo(msg);
-  }, []);
+  const handleReply = useCallback(
+    (msg: Message) => {
+      setReplyTo(msg);
+    },
+    [setReplyTo]
+  );
 
   // Optimistic message sending — append locally, reconcile with server
   const handleSendMessage = async (e: React.FormEvent) => {
@@ -968,7 +1001,7 @@ export function Dashboard({
         }
       }
     },
-    [selectedGroupId, userId, username]
+    [selectedGroupId, userId, username, setActionError]
   );
 
   // Delete a message (own messages only) — optimistic update
@@ -1003,7 +1036,7 @@ export function Dashboard({
         setActionError("Failed to delete message.");
       }
     },
-    [selectedGroupId]
+    [selectedGroupId, setActionError]
   );
 
   const copyInviteCode = async () => {
@@ -1432,7 +1465,7 @@ export function Dashboard({
                   {/* All caught up indicator */}
                   {!hasMore && messages.length > 0 && (
                     <p className="py-2 text-center text-xs text-zinc-600">
-                      You're all caught up
+                      You&apos;re all caught up
                     </p>
                   )}
                   {messages.map((msg) => (
