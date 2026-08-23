@@ -108,10 +108,10 @@ export async function GET(request: NextRequest) {
       // Deleted messages show a placeholder instead of their content
       content: m.deletedAt ? "" : m.content,
       userId: m.userId,
-      // Anonymous chat: only the sender sees their own username; everyone
-      // else sees "Anonymous". The admin panel uses a separate action that
-      // still exposes real usernames.
-      username: m.userId === session.userId ? m.user.username : "Anonymous",
+      // Show the message author's username so other members can see who
+      // sent each message. Anonymous/pseudonymous identity is the sender's
+      // chosen username in this group.
+      username: m.user.username,
       deletedAt: m.deletedAt ? m.deletedAt.toISOString() : null,
       createdAt: m.createdAt.toISOString(),
       // Seen count: how many OTHER members have read up to this message
@@ -128,14 +128,14 @@ export async function GET(request: NextRequest) {
         ? {
             id: m.replyTo.id,
             content: m.replyTo.content,
-            username: "Anonymous",
+            username: m.replyTo.user.username,
           }
         : null,
       reactions: m.reactions.map((r) => ({
         id: r.id,
         emoji: r.emoji,
         userId: r.userId,
-        username: "Anonymous",
+        username: r.user.username,
       })),
     }))
   );
