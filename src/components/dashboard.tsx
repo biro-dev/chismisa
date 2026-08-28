@@ -1,13 +1,11 @@
 "use client";
 
 import {
-  useState,
-  useCallback,
   useActionState,
+  useCallback,
   useEffect,
-  useRef,
-  useTransition,
   useSyncExternalStore,
+  useState,
 } from "react";
 import { useRouter } from "next/navigation";
 import {
@@ -32,29 +30,15 @@ import {
   subscribeToTheme,
   toggleThemeInStore,
 } from "@/lib/theme";
-import type { DashboardProps, GroupDetails, Message } from "@/lib/types";
+import type { DashboardProps } from "@/lib/types";
 import { groupColor } from "@/lib/group-color";
 import {
   createGroupAction,
+  deleteGroupAction,
   joinGroupAction,
   leaveGroupAction,
-  deleteGroupAction,
 } from "@/lib/actions/groups";
-import {
-  sendMessageAction,
-  reactToMessageAction,
-  deleteMessageAction,
-  markGroupAsRead,
-} from "@/lib/actions/messages";
-import {
-  setRealtimeHandlers,
-  subscribeToGroup,
-  subscribeToPresence,
-  unsubscribeFromGroup,
-  sendTyping,
-} from "@/lib/realtime";
-
-
+import { useChat } from "@/lib/hooks/use-chat";
 
 export function Dashboard({
   username,
@@ -64,29 +48,43 @@ export function Dashboard({
   messages: initialMessages,
 }: DashboardProps) {
   const router = useRouter();
-  const [messages, setMessages] = useState<Message[]>(initialMessages);
-  // Client-side group switching: keep the selected group in local state so
-  // tapping a group is instant (no full page reload). The server still
-  // provides the initial activeGroup + messages on first load.
-  const [selectedGroup, setSelectedGroup] = useState<GroupDetails | null>(
-    activeGroup
-  );
-  const [selectedGroupId, setSelectedGroupId] = useState<string | null>(
-    activeGroup?.id ?? null
-  );
-  // Per-group message cache so switching back to a previously-viewed group
-  // shows its messages instantly while fresh data loads in the background.
-  const messageCacheRef = useRef<Map<string, Message[]>>(new Map());
-  // Per-group details cache (name, member count, etc.)
-  const groupDetailsCacheRef = useRef<Map<string, GroupDetails>>(new Map());
-  // Track the latest message timestamp per group for incremental polling
-  const lastMessageTimeByGroupRef = useRef<Map<string, string>>(new Map());
-  // Track the oldest loaded message per group for pagination
-  const oldestMessageTimeByGroupRef = useRef<Map<string, string>>(new Map());
-  // Track hasMore per group
-  const hasMoreByGroupRef = useRef<Map<string, boolean>>(new Map());
-  // Track loadingOlder per group
-  const loadingOlderByGroupRef = useRef<Map<string, boolean>>(new Map());
+  // All messaging state (messages, group selection, polling, realtime,
+  // optimistic send/react/delete, pagination, typing, read receipts) lives
+  // in useChat — this component stays a mostly-presentational shell.
+  const chat = useChat({
+    groups,
+    activeGroup,
+    initialMessages,
+    userId,
+    username,
+  });
+  const {
+    messages,
+    selectedGroup,
+    selectedGroupId,
+    messageInput,
+    handleInputChange,
+    replyTo,
+    setReplyTo,
+    actionError,
+    setActionError,
+    hasMore,
+    loadingOlder,
+    handleScroll,
+    handleReply,
+    handleSendMessage,
+    handleReact,
+    handleDeleteMessage,
+    selectGroup,
+    removeGroupFromState,
+    typingUsers,
+    onlineCount,
+    messagesEndRef,
+    scrollContainerRef,
+  } = chat;
+
+  // UI-only state (modals, sidebar, clipboard).
+  const [sidebarOpen, setSidebarOpen] = useState(false);
   const [showCreateModal, setShowCreateModal] = useState(false);
   const [showJoinModal, setShowJoinModal] = useState(false);
   const [showInviteModal, setShowInviteModal] = useState(false);
@@ -98,42 +96,6 @@ export function Dashboard({
   } | null>(null);
   const [confirmPending, setConfirmPending] = useState(false);
   const [copied, setCopied] = useState(false);
-  const [messageInput, setMessageInput] = useState("");
-  const [sidebarOpen, setSidebarOpen] = useState(false);
-  const [replyTo, setReplyTo] = useState<Message | null>(null);
-  const [actionError, setActionError] = useState("");
-  // Real-time state
-  const [typingUsers, setTypingUsers] = useState<Set<string>>(new Set());
-  const [onlineCount, setOnlineCount] = useState<number>(0);
-  const typingTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  // Debounce typing broadcasts so long messages don't fire one per keystroke
-  const typingSentAtRef = useRef(0);
-  const TYPING_DEBOUNCE_MS = 2000;
-  // Theme: "dark" (default) or "light", persisted in localStorage.
-  // useSyncExternalStore resolves the saved theme on the client without
-  // a post-hydration setState cascade.
-  const theme = useSyncExternalStore(
-    subscribeToTheme,
-    getThemeSnapshot,
-    getThemeServerSnapshot
-  );
-  const messagesEndRef = useRef<HTMLDivElement>(null);
-  const scrollContainerRef = useRef<HTMLDivElement>(null);
-  const isNearBottomRef = useRef(true);
-  const scrollRafRef = useRef<number | null>(null);
-  const [hasMore, setHasMore] = useState(true);
-  const [loadingOlder, setLoadingOlder] = useState(false);
-  const hasMoreRef = useRef(true);
-  const loadingOlderRef = useRef(false);
-  const oldestMessageTimeRef = useRef<string | null>(
-    initialMessages.length > 0 ? initialMessages[0].createdAt : null
-  );
-  // Track the latest message timestamp for incremental polling
-  const lastMessageTimeRef = useRef<string | null>(
-    initialMessages.length > 0
-      ? initialMessages[initialMessages.length - 1].createdAt
-      : null
-  );
   const [createState, createAction, createPending] = useActionState(
     createGroupAction,
     undefined
@@ -142,7 +104,15 @@ export function Dashboard({
     joinGroupAction,
     undefined
   );
-  const [, startTransition] = useTransition();
+
+  // Theme: "dark" (default) or "light", persisted in localStorage.
+  // useSyncExternalStore resolves the saved theme on the client without
+  // a post-hydration setState cascade.
+  const theme = useSyncExternalStore(
+    subscribeToTheme,
+    getThemeSnapshot,
+    getThemeServerSnapshot
+  );
 
   // Apply the theme whenever the snapshot changes (DOM-only sync - never
   // setState in an effect). SSR markup has no data-theme attribute, so the
@@ -155,262 +125,14 @@ export function Dashboard({
     toggleThemeInStore(theme);
   }, [theme]);
 
-  // Load older messages when the user scrolls to the top (Messenger-style).
-  // Uses cursor-based pagination via the `before` timestamp.
-  const loadOlderMessages = useCallback(async () => {
-    const groupId = selectedGroupId;
-    if (!groupId) return;
-    if (loadingOlderRef.current || !hasMoreRef.current) return;
-
-    const before = oldestMessageTimeRef.current;
-    if (!before) {
-      setHasMore(false);
-      return;
-    }
-
-    loadingOlderRef.current = true;
-    setLoadingOlder(true);
-
-    const el = scrollContainerRef.current;
-    const prevScrollHeight = el?.scrollHeight || 0;
-
-    try {
-      const url = `/api/messages?groupId=${groupId}&before=${encodeURIComponent(
-        before
-      )}&limit=50`;
-      const res = await fetch(url, { cache: "no-store" });
-      if (res.ok) {
-        const data = await res.json();
-        if (data.length === 0) {
-          setHasMore(false);
-        } else {
-          setMessages((prev) => {
-            const existingIds = new Set(prev.map((m) => m.id));
-            const olderMsgs = data.filter(
-              (m: Message) => !existingIds.has(m.id)
-            );
-            return [...olderMsgs, ...prev];
-          });
-          // Track the new oldest message for the next page
-          oldestMessageTimeRef.current = data[0].createdAt;
-          // Preserve scroll position after prepending older messages
-          requestAnimationFrame(() => {
-            if (el) {
-              el.scrollTop = el.scrollHeight - prevScrollHeight;
-            }
-          });
-        }
-      }
-    } catch {
-      // ignore load errors
-    } finally {
-      loadingOlderRef.current = false;
-      setLoadingOlder(false);
-    }
-  }, [selectedGroupId]);
-
-  // Keep the ref in sync so handleScroll can call it without stale closures
-  useEffect(() => {
-    hasMoreRef.current = hasMore;
-  }, [hasMore]);
-
-  // Track scroll position to avoid yanking the user when they scroll up.
-  // rAF-throttled so it only runs once per frame instead of on every scroll event.
-  const handleScroll = useCallback(() => {
-    if (scrollRafRef.current !== null) return;
-    scrollRafRef.current = requestAnimationFrame(() => {
-      scrollRafRef.current = null;
-      const el = scrollContainerRef.current;
-      if (!el) return;
-      const distanceFromBottom = el.scrollHeight - el.scrollTop - el.clientHeight;
-      isNearBottomRef.current = distanceFromBottom < 100;
-      // Trigger loading older messages when scrolled near the top
-      if (el.scrollTop < 50) {
-        loadOlderMessages();
-      }
-    });
-  }, [loadOlderMessages]);
-
-  // Incremental polling — only fetches messages newer than the last known one.
-  // Pauses when the tab is hidden.
-  useEffect(() => {
-    const groupId = selectedGroupId;
-    if (!groupId) return;
-
-    let interval: ReturnType<typeof setInterval> | null = null;
-
-    const poll = async () => {
-      if (document.hidden) return;
-      try {
-        const since = lastMessageTimeRef.current || "";
-        const url = `/api/messages?groupId=${groupId}${
-          since ? `&since=${encodeURIComponent(since)}` : ""
-        }`;
-        const res = await fetch(url, { cache: "no-store" });
-        if (res.ok) {
-          const data = await res.json();
-          if (data.length > 0) {
-            setMessages((prev) => {
-              const existingIds = new Set(prev.map((m) => m.id));
-              const newMsgs = data.filter((m: Message) => !existingIds.has(m.id));
-              if (newMsgs.length === 0) return prev;
-              const merged = [...prev, ...newMsgs].sort(
-                (a, b) =>
-                  new Date(a.createdAt).getTime() -
-                  new Date(b.createdAt).getTime()
-              );
-              return merged.slice(-500);
-            });
-            // Update the latest timestamp for the next incremental poll
-            const last = data[data.length - 1];
-            if (last?.createdAt) lastMessageTimeRef.current = last.createdAt;
-          }
-        }
-      } catch {
-        // ignore polling errors
-      }
-    };
-
-    // Initial fetch (no `since` — gets the full history)
-    poll();
-    // Slow backup poll — real-time via Pusher is the primary path.
-    interval = setInterval(poll, 30000);
-
-    // Resume polling immediately when the tab becomes visible again
-    const onVisibility = () => {
-      if (!document.hidden) poll();
-    };
-    document.addEventListener("visibilitychange", onVisibility);
-
-    return () => {
-      if (interval) clearInterval(interval);
-      document.removeEventListener("visibilitychange", onVisibility);
-    };
-  }, [selectedGroupId]);
-
-  // Real-time subscriptions — joins the group's private + presence channels
-  // on Pusher. Falls back to the 30s poll above if Pusher isn't configured.
-  useEffect(() => {
-    const groupId = selectedGroupId;
-    if (!groupId) return;
-
-    // Register callback handlers once (they close over stable callbacks/setters)
-    setRealtimeHandlers({
-      onNewMessage: (msg) => {
-        setMessages((prev) => {
-          if (prev.some((m) => m.id === msg.id)) return prev;
-          const merged = [...prev, msg].sort(
-            (a, b) =>
-              new Date(a.createdAt).getTime() -
-              new Date(b.createdAt).getTime()
-          );
-          lastMessageTimeRef.current = msg.createdAt;
-          return merged;
-        });
-      },
-      onMessageDeleted: (messageId) => {
-        setMessages((prev) =>
-          prev.map((m) =>
-            m.id === messageId
-              ? { ...m, deletedAt: new Date().toISOString(), content: "" }
-              : m
-          )
-        );
-      },
-      onReactionUpdated: (messageId, reactions) => {
-        setMessages((prev) =>
-          prev.map((m) =>
-            m.id === messageId ? { ...m, reactions } : m
-          )
-        );
-      },
-      onTyping: (typerUserId) => {
-        setTypingUsers((prev) => {
-          if (typerUserId === userId) return prev; // don't show "you are typing"
-          const next = new Set(prev);
-          next.add(typerUserId);
-          return next;
-        });
-        // Auto-hide typing indicator after 3s of no events
-        if (typingTimeoutRef.current) clearTimeout(typingTimeoutRef.current);
-        typingTimeoutRef.current = setTimeout(() => {
-          setTypingUsers((prev) => {
-            if (typerUserId === userId) return prev;
-            const next = new Set(prev);
-            next.delete(typerUserId);
-            return next;
-          });
-        }, 3000);
-      },
-      onPresenceChange: (count) => {
-        setOnlineCount(count);
-      },
-    });
-
-    // Subscribe to private channel (messages, reactions, deletions, typing)
-    subscribeToGroup(groupId);
-    // Subscribe to presence channel (online count)
-    const presence = subscribeToPresence(groupId);
-    // If presence couldn't subscribe yet (auth pending), fetch count via poll fallback
-    if (!presence) {
-      fetch(`/api/messages?groupId=${groupId}`, {
-        cache: "no-store",
-      }).catch(() => {});
-    }
-
-    return () => {
-      unsubscribeFromGroup(groupId);
-      if (typingTimeoutRef.current) clearTimeout(typingTimeoutRef.current);
-    };
-  }, [selectedGroupId, userId]);
-
-  // Prompt read receipts — keep the viewer's `lastReadAt` fresh so other
-  // members' "Seen by N" counts update quickly, instead of waiting for the
-  // 30s backup poll's server-side side-effect. Throttled to one request per
-  // 5s and skipped entirely when the tab isn't visible.
-  const lastReadMarkAtRef = useRef(0);
-  const markGroupRead = useCallback((groupId: string) => {
-    if (typeof document !== "undefined" && document.hidden) return;
-    const now = Date.now();
-    if (now - lastReadMarkAtRef.current < 5000) return;
-    lastReadMarkAtRef.current = now;
-    markGroupAsRead(groupId).catch(() => {
-      // non-critical — the poll side-effect will catch up
-    });
-  }, []);
-
-  // Mark the group read when it's opened…
-  useEffect(() => {
-    if (selectedGroupId) markGroupRead(selectedGroupId);
-  }, [selectedGroupId, markGroupRead]);
-
-  // …and when new messages arrive while it's being viewed.
-  useEffect(() => {
-    if (selectedGroupId && messages.length > 0) markGroupRead(selectedGroupId);
-  }, [messages.length, selectedGroupId, markGroupRead]);
-
-  // …and when the user returns to the tab.
-  useEffect(() => {
-    if (!selectedGroupId) return;
-    const onVisible = () => {
-      if (!document.hidden) markGroupRead(selectedGroupId);
-    };
-    document.addEventListener("visibilitychange", onVisible);
-    return () => document.removeEventListener("visibilitychange", onVisible);
-  }, [selectedGroupId, markGroupRead]);
-
-  // Smart auto-scroll — only scrolls to bottom if the user is already near it.
-  // Uses direct scrollTop + rAF instead of scrollIntoView for smoother, cheaper scrolling.
-  useEffect(() => {
-    if (isNearBottomRef.current) {
-      const el = scrollContainerRef.current;
-      if (el) {
-        requestAnimationFrame(() => {
-          el.scrollTop = el.scrollHeight;
-        });
-      }
-    }
-  }, [messages.length, selectedGroupId]);
+  // Selecting a group from the sidebar also closes the mobile drawer.
+  const handleSelectGroup = useCallback(
+    (groupId: string) => {
+      setSidebarOpen(false);
+      selectGroup(groupId);
+    },
+    [selectGroup]
+  );
 
   // Handle create group success
   useEffect(() => {
@@ -427,174 +149,6 @@ export function Dashboard({
       router.refresh();
     }
   }, [joinState, router]);
-
-  // Stable callback for replying to a message
-  const handleReply = useCallback(
-    (msg: Message) => {
-      setReplyTo(msg);
-    },
-    [setReplyTo]
-  );
-
-  // Optimistic message sending — append locally, reconcile with server
-  const handleSendMessage = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!selectedGroup || !messageInput.trim()) return;
-
-    const content = messageInput.trim();
-    const replyToMsg = replyTo;
-    const optimisticMsg: Message = {
-      id: `temp-${Date.now()}`,
-      content,
-      userId,
-      username: "You",
-      createdAt: new Date().toISOString(),
-      replyTo: replyToMsg
-        ? {
-            id: replyToMsg.id,
-            content: replyToMsg.content,
-            username: replyToMsg.username,
-          }
-        : null,
-      reactions: [],
-    };
-
-    // Optimistic append — instant feedback
-    setMessages((prev) => [...prev, optimisticMsg]);
-    setMessageInput("");
-    setReplyTo(null);
-    setActionError("");
-
-    const formData = new FormData();
-    formData.append("groupId", selectedGroup.id);
-    formData.append("content", content);
-    if (replyToMsg) {
-      formData.append("replyToId", replyToMsg.id);
-    }
-
-    try {
-      const result = await sendMessageAction(formData);
-      if (result.success && result.message) {
-        // Replace optimistic message with the server-confirmed one.
-        // First remove any copy the polling may have already appended
-        // (e.g. if the poll fetched the confirmed message before this
-        // action resolved), then swap the optimistic entry in.
-        const confirmed = result.message as Message;
-        setMessages((prev) => {
-          const withoutPolledCopy = prev.filter((m) => m.id !== confirmed.id);
-          return withoutPolledCopy.map((m) =>
-            m.id === optimisticMsg.id ? confirmed : m
-          );
-        });
-        lastMessageTimeRef.current = confirmed.createdAt;
-      } else {
-        // Rollback on failure
-        setMessages((prev) => prev.filter((m) => m.id !== optimisticMsg.id));
-        setActionError(result.error || "Failed to send message.");
-      }
-    } catch {
-      // Rollback on error
-      setMessages((prev) => prev.filter((m) => m.id !== optimisticMsg.id));
-      setActionError("Failed to send message.");
-    }
-  };
-
-  // Optimistic reactions — toggle locally, reconcile with server
-  const handleReact = useCallback(
-    async (messageId: string, emoji: string) => {
-      const groupId = selectedGroupId;
-      if (!groupId) return;
-
-      // Optimistic toggle
-      setMessages((prev) =>
-        prev.map((m) => {
-          if (m.id !== messageId) return m;
-          const existing = m.reactions.find(
-            (r) => r.userId === userId && r.emoji === emoji
-          );
-          if (existing) {
-            return {
-              ...m,
-              reactions: m.reactions.filter((r) => r.id !== existing.id),
-            };
-          }
-          return {
-            ...m,
-            reactions: [
-              ...m.reactions,
-              {
-                id: `temp-${Date.now()}`,
-                emoji,
-                userId,
-                username,
-              },
-            ],
-          };
-        })
-      );
-
-      try {
-        const result = await reactToMessageAction(messageId, emoji);
-        if (!result.success) {
-          setActionError(result.error || "Failed to add reaction.");
-          // Refetch to rollback to server state
-          const res = await fetch(`/api/messages?groupId=${groupId}`, {
-            cache: "no-store",
-          });
-          if (res.ok) {
-            const data = await res.json();
-            setMessages(data);
-          }
-        }
-      } catch {
-        setActionError("Failed to add reaction.");
-        // Refetch to rollback to server state
-        const res = await fetch(`/api/messages?groupId=${groupId}`, {
-          cache: "no-store",
-        });
-        if (res.ok) {
-          const data = await res.json();
-          setMessages(data);
-        }
-      }
-    },
-    [selectedGroupId, userId, username, setActionError]
-  );
-
-  // Delete a message (own messages only) — optimistic update
-  const handleDeleteMessage = useCallback(
-    async (messageId: string) => {
-      const groupId = selectedGroupId;
-      if (!groupId) return;
-
-      // Optimistic: mark as deleted locally
-      setMessages((prev) =>
-        prev.map((m) =>
-          m.id === messageId
-            ? { ...m, deletedAt: new Date().toISOString(), content: "" }
-            : m
-        )
-      );
-
-      try {
-        const result = await deleteMessageAction(messageId);
-        if (!result.success) {
-          setActionError(result.error || "Failed to delete message.");
-          // Refetch to rollback
-          const res = await fetch(`/api/messages?groupId=${groupId}`, {
-            cache: "no-store",
-          });
-          if (res.ok) {
-            const data = await res.json();
-            setMessages(data);
-          }
-        }
-      } catch {
-        setActionError("Failed to delete message.");
-      }
-    },
-    [selectedGroupId, setActionError]
-  );
 
   const copyInviteCode = async () => {
     if (!selectedGroup) return;
@@ -620,7 +174,9 @@ export function Dashboard({
     }
   };
 
-  // Handle leave/delete group confirmation
+  // Handle leave/delete group confirmation — the actual removal from local
+  // state (per-group caches + switching to another group if needed) is done
+  // by the chat hook via removeGroupFromState.
   const handleConfirmGroupAction = async () => {
     if (!confirmModal) return;
     setConfirmPending(true);
@@ -632,27 +188,7 @@ export function Dashboard({
           : await deleteGroupAction(confirmModal.groupId);
 
       if (result.success) {
-        // Remove the group from the local groups list
-        const remaining = groups.filter((g) => g.id !== confirmModal.groupId);
-        // Clear caches for this group
-        messageCacheRef.current.delete(confirmModal.groupId);
-        groupDetailsCacheRef.current.delete(confirmModal.groupId);
-        lastMessageTimeByGroupRef.current.delete(confirmModal.groupId);
-        oldestMessageTimeByGroupRef.current.delete(confirmModal.groupId);
-        hasMoreByGroupRef.current.delete(confirmModal.groupId);
-        loadingOlderByGroupRef.current.delete(confirmModal.groupId);
-
-        // If we were viewing this group, switch to another one
-        if (selectedGroupId === confirmModal.groupId) {
-          if (remaining.length > 0) {
-            selectGroup(remaining[0].id);
-          } else {
-            setSelectedGroup(null);
-            setSelectedGroupId(null);
-            setMessages([]);
-            router.replace("/", { scroll: false });
-          }
-        }
+        removeGroupFromState(confirmModal.groupId);
         setConfirmModal(null);
         router.refresh();
       } else {
@@ -666,96 +202,6 @@ export function Dashboard({
       setConfirmPending(false);
     }
   };
-
-  // Instant client-side group switching (no full page reload).
-  // Shows cached messages immediately, fetches fresh ones in the background,
-  // and updates the URL without triggering a server refresh.
-  const selectGroup = useCallback(
-    (groupId: string) => {
-      setSidebarOpen(false);
-      setReplyTo(null);
-      setActionError("");
-
-      // Build GroupDetails from the groups list (we have name/code/memberCount)
-      const group = groups.find((g) => g.id === groupId);
-      if (!group) return;
-
-      const cachedDetails = groupDetailsCacheRef.current.get(groupId);
-      const details: GroupDetails = cachedDetails ?? {
-        id: group.id,
-        name: group.name,
-        code: group.code,
-        isOwner: group.isOwner,
-        memberCount: group.memberCount,
-        members: [],
-      };
-      groupDetailsCacheRef.current.set(groupId, details);
-
-      // Switch the UI instantly
-      setSelectedGroup(details);
-      setSelectedGroupId(groupId);
-
-      // Show cached messages instantly if we've loaded this group before
-      const cached = messageCacheRef.current.get(groupId);
-      if (cached) {
-        setMessages(cached);
-        // Restore per-group pagination state
-        hasMoreRef.current = hasMoreByGroupRef.current.get(groupId) ?? true;
-        loadingOlderRef.current =
-          loadingOlderByGroupRef.current.get(groupId) ?? false;
-        oldestMessageTimeRef.current =
-          oldestMessageTimeByGroupRef.current.get(groupId) ?? null;
-        lastMessageTimeRef.current =
-          lastMessageTimeByGroupRef.current.get(groupId) ?? null;
-      } else {
-        // No cache — show empty state while fetching
-        setMessages([]);
-        hasMoreRef.current = true;
-        loadingOlderRef.current = false;
-        oldestMessageTimeRef.current = null;
-        lastMessageTimeRef.current = null;
-      }
-
-      // Update the URL without a full refresh (keeps shareable links)
-      startTransition(() => {
-        router.replace(`/?group=${groupId}`, { scroll: false });
-      });
-
-      // Fetch fresh messages in the background
-      fetch(`/api/messages?groupId=${groupId}`, { cache: "no-store" })
-        .then((res) => (res.ok ? res.json() : []))
-        .then((data: Message[]) => {
-          messageCacheRef.current.set(groupId, data);
-          // Only apply to the UI if this is still the selected group
-          setSelectedGroupId((current) => {
-            if (current === groupId) {
-              setMessages(data);
-              if (data.length > 0) {
-                oldestMessageTimeRef.current = data[0].createdAt;
-                lastMessageTimeRef.current =
-                  data[data.length - 1].createdAt;
-                oldestMessageTimeByGroupRef.current.set(
-                  groupId,
-                  data[0].createdAt
-                );
-                lastMessageTimeByGroupRef.current.set(
-                  groupId,
-                  data[data.length - 1].createdAt
-                );
-              }
-              hasMoreByGroupRef.current.set(groupId, data.length >= 50);
-              hasMoreRef.current = data.length >= 50;
-            }
-            return current;
-          });
-        })
-        .catch(() => {
-          // ignore fetch errors — polling will retry
-        });
-    },
-    [groups, router]
-  );
-
   return (
     <div className="flex h-dvh overflow-hidden">
       {/* Mobile sidebar overlay */}
@@ -776,7 +222,7 @@ export function Dashboard({
         onToggleTheme={toggleTheme}
         onShowCreate={() => setShowCreateModal(true)}
         onShowJoin={() => setShowJoinModal(true)}
-        onSelectGroup={selectGroup}
+        onSelectGroup={handleSelectGroup}
         onCloseSidebar={() => setSidebarOpen(false)}
       />
 
@@ -971,17 +417,7 @@ export function Dashboard({
                 <input
                   type="text"
                   value={messageInput}
-                  onChange={(e) => {
-                    setMessageInput(e.target.value);
-                    const value = e.target.value.trim();
-                    if (value && selectedGroup) {
-                      const now = Date.now();
-                      if (now - typingSentAtRef.current >= TYPING_DEBOUNCE_MS) {
-                        typingSentAtRef.current = now;
-                        sendTyping(selectedGroup.id);
-                      }
-                    }
-                  }}
+                  onChange={(e) => handleInputChange(e.target.value)}
                   placeholder={`Message #${selectedGroup.name}…`}
                   maxLength={2000}
                   className="flex-1 rounded-xl border border-zinc-700/60 bg-zinc-900/60 px-4 py-2.5 text-sm text-zinc-100 placeholder-zinc-500 outline-none transition-colors focus:border-purple-500 focus:ring-2 focus:ring-purple-500/20"
@@ -1199,4 +635,3 @@ export function Dashboard({
     </div>
   );
 }
-
