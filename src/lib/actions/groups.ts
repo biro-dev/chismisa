@@ -182,6 +182,20 @@ export async function getUserGroups() {
     },
   });
 
+  // Unread = messages in the group newer than this member's lastReadAt.
+  // Prisma can't express a per-row date filter in a grouped count, so do one
+  // cheap count per membership (each is indexed on groupId + createdAt).
+  const unreadByGroup = new Map<string, number>();
+  for (const m of memberships) {
+    const unread = await db.message.count({
+      where: {
+        groupId: m.groupId,
+        createdAt: { gt: m.lastReadAt ?? new Date(0) },
+      },
+    });
+    unreadByGroup.set(m.groupId, unread);
+  }
+
   return memberships.map((m) => ({
     id: m.group.id,
     name: m.group.name,
@@ -190,6 +204,7 @@ export async function getUserGroups() {
     isOwner: m.group.ownerId === session.userId,
     memberCount: m.group._count.members,
     messageCount: m.group._count.messages,
+    unreadCount: unreadByGroup.get(m.group.id) ?? 0,
   }));
 }
 

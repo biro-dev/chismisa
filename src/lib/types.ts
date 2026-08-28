@@ -7,6 +7,8 @@ export type Group = {
   isOwner: boolean;
   memberCount: number;
   messageCount: number;
+  /** Messages the current user hasn't read yet (for the sidebar badge). */
+  unreadCount: number;
 };
 
 export type GroupDetails = {

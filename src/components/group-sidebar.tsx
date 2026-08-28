@@ -154,6 +154,16 @@ export function GroupSidebar({
                     OWNER
                   </span>
                 )}
+                {group.unreadCount > 0 && group.id !== selectedGroupId && (
+                  <span
+                    className="flex h-5 min-w-5 shrink-0 items-center justify-center rounded-full bg-gradient-to-r from-fuchsia-600 to-purple-600 px-1.5 text-[10px] font-bold text-white"
+                    title={`${group.unreadCount} unread message${
+                      group.unreadCount === 1 ? "" : "s"
+                    }`}
+                  >
+                    {group.unreadCount > 99 ? "99+" : group.unreadCount}
+                  </span>
+                )}
               </button>
             ))}
           </div>

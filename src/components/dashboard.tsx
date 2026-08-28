@@ -30,7 +30,7 @@ import {
   subscribeToTheme,
   toggleThemeInStore,
 } from "@/lib/theme";
-import type { DashboardProps } from "@/lib/types";
+import type { DashboardProps, Group } from "@/lib/types";
 import { groupColor } from "@/lib/group-color";
 import {
   createGroupAction,
@@ -48,11 +48,15 @@ export function Dashboard({
   messages: initialMessages,
 }: DashboardProps) {
   const router = useRouter();
+  // The sidebar group list is server-sourced via the RSC prop, but it's also
+  // kept in local state so unread badges refresh every ~30s without a full
+  // page reload (see the polling effect below).
+  const [groupsState, setGroupsState] = useState<Group[]>(groups);
   // All messaging state (messages, group selection, polling, realtime,
   // optimistic send/react/delete, pagination, typing, read receipts) lives
   // in useChat — this component stays a mostly-presentational shell.
   const chat = useChat({
-    groups,
+    groups: groupsState,
     activeGroup,
     initialMessages,
     userId,
@@ -125,10 +129,49 @@ export function Dashboard({
     toggleThemeInStore(theme);
   }, [theme]);
 
-  // Selecting a group from the sidebar also closes the mobile drawer.
+  // Refresh unread badges from the server every ~30s (and when the tab
+  // becomes visible again). The selected group is being viewed, so it's
+  // force-zeroed to avoid a stale badge after switching.
+  useEffect(() => {
+    let cancelled = false;
+    const refreshGroups = async () => {
+      if (typeof document !== "undefined" && document.hidden) return;
+      try {
+        const res = await fetch("/api/groups", { cache: "no-store" });
+        if (!res.ok || cancelled) return;
+        const data = (await res.json()) as Group[];
+        setGroupsState(
+          data.map((g) =>
+            g.id === selectedGroupId ? { ...g, unreadCount: 0 } : g
+          )
+        );
+      } catch {
+        // ignore — the next poll will retry
+      }
+    };
+
+    refreshGroups();
+    const interval = setInterval(refreshGroups, 30000);
+    const onVisible = () => {
+      if (!document.hidden) refreshGroups();
+    };
+    document.addEventListener("visibilitychange", onVisible);
+
+    return () => {
+      cancelled = true;
+      clearInterval(interval);
+      document.removeEventListener("visibilitychange", onVisible);
+    };
+  }, [selectedGroupId]);
+
+  // Selecting a group from the sidebar also closes the mobile drawer and
+  // clears that group's unread badge immediately (before the server poll).
   const handleSelectGroup = useCallback(
     (groupId: string) => {
       setSidebarOpen(false);
+      setGroupsState((prev) =>
+        prev.map((g) => (g.id === groupId ? { ...g, unreadCount: 0 } : g))
+      );
       selectGroup(groupId);
     },
     [selectGroup]
@@ -216,7 +259,7 @@ export function Dashboard({
       <GroupSidebar
         username={username}
         theme={theme}
-        groups={groups}
+        groups={groupsState}
         selectedGroupId={selectedGroupId}
         sidebarOpen={sidebarOpen}
         onToggleTheme={toggleTheme}

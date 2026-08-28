@@ -12,6 +12,9 @@ const dbMock = vi.hoisted(() => ({
     delete: vi.fn(),
     findMany: vi.fn(),
   },
+  message: {
+    count: vi.fn(),
+  },
 }));
 
 const sessionMock = vi.hoisted(() => ({
@@ -194,6 +197,10 @@ describe("getUserGroups", () => {
   it("exposes the invite code to owners but hides it from members", async () => {
     dbMock.groupMember.findMany.mockResolvedValue([
       {
+        id: "gm_1",
+        userId: "user_1",
+        groupId: "group_1",
+        lastReadAt: new Date("2026-01-05T00:00:00Z"),
         joinedAt: new Date(),
         group: {
           id: "group_1",
@@ -204,6 +211,10 @@ describe("getUserGroups", () => {
         },
       },
       {
+        id: "gm_2",
+        userId: "user_1",
+        groupId: "group_2",
+        lastReadAt: null,
         joinedAt: new Date(),
         group: {
           id: "group_2",
@@ -214,6 +225,9 @@ describe("getUserGroups", () => {
         },
       },
     ]);
+    dbMock.message.count
+      .mockResolvedValueOnce(4) // group_1: 4 unread since lastReadAt
+      .mockResolvedValueOnce(2); // group_2: no lastReadAt → all 2 messages unread
 
     const groups = await getUserGroups();
     expect(groups).toHaveLength(2);
@@ -221,11 +235,19 @@ describe("getUserGroups", () => {
     const owned = groups.find((g: { id: string }) => g.id === "group_1");
     expect(owned!.code).toBe("CHISMIS-ABC123");
     expect(owned!.isOwner).toBe(true);
+    expect(owned!.unreadCount).toBe(4);
 
     const joined = groups.find((g: { id: string }) => g.id === "group_2");
     // Non-owner must not receive the invite code via the RSC payload
     expect(joined!.code).toBe("");
     expect(joined!.isOwner).toBe(false);
+    expect(joined!.unreadCount).toBe(2);
+  });
+
+  it("returns an empty list for unauthenticated users", async () => {
+    sessionMock.getSession.mockResolvedValueOnce(null);
+    expect(await getUserGroups()).toEqual([]);
+    expect(dbMock.groupMember.findMany).not.toHaveBeenCalled();
   });
 });
 

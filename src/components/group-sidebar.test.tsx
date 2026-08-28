@@ -16,6 +16,7 @@ const groups: Group[] = [
     isOwner: true,
     memberCount: 5,
     messageCount: 42,
+    unreadCount: 0,
   },
   {
     id: "group_2",
@@ -24,6 +25,7 @@ const groups: Group[] = [
     isOwner: false,
     memberCount: 2,
     messageCount: 7,
+    unreadCount: 3,
   },
 ];
 
@@ -96,5 +98,30 @@ describe("GroupSidebar", () => {
     makeSidebar({ selectedGroupId: null });
     const button = screen.getByText("Chismis Central").closest("button");
     expect(button!.className).not.toContain("bg-purple-600/20");
+  });
+
+  it("shows an unread badge on groups with unread messages", () => {
+    makeSidebar({ selectedGroupId: "group_1" });
+    const badge = screen.getByText("3");
+    expect(badge.className).toContain("rounded-full");
+    const teaTime = screen.getByText("Tea Time").closest("button");
+    expect(teaTime!.textContent).toContain("3");
+  });
+
+  it("hides the unread badge for the selected group and for read groups", () => {
+    makeSidebar({ selectedGroupId: "group_2" });
+    // group_2 is selected — badge hidden even though unreadCount is 3
+    expect(screen.queryByText("3")).toBeNull();
+  });
+
+  it('caps the unread badge at "99+"', () => {
+    makeSidebar({
+      selectedGroupId: "group_1",
+      groups: [
+        { ...groups[0], unreadCount: 0 },
+        { ...groups[1], unreadCount: 250 },
+      ],
+    });
+    expect(screen.getByText("99+")).toBeTruthy();
   });
 });
