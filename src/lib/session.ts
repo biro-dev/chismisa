@@ -1,22 +1,9 @@
 import "server-only";
 import { SignJWT, jwtVerify } from "jose";
 import { cookies } from "next/headers";
+import { getEncodedSessionKey } from "@/lib/session-secret";
 
-function getEncodedSecretKey(): Uint8Array {
-  const secret = process.env.SESSION_SECRET;
-  if (!secret) {
-    if (process.env.NODE_ENV === "production") {
-      throw new Error(
-        "SESSION_SECRET environment variable is required in production."
-      );
-    }
-    // Development-only fallback. Never used in production — see above.
-    return new TextEncoder().encode("chismisa-dev-secret");
-  }
-  return new TextEncoder().encode(secret);
-}
-
-const encodedKey = getEncodedSecretKey();
+const encodedKey = getEncodedSessionKey();
 
 export type SessionPayload = {
   userId: string;

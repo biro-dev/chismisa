@@ -32,6 +32,18 @@ type UseChatParams = {
 };
 
 /**
+ * Human-friendly typing indicator text from the list of typer usernames.
+ * One typer: "Mara is typing..." — two: "Mara and Ana are typing..." —
+ * more: "Mara and 2 others are typing..."
+ */
+export function formatTypingIndicator(names: string[]): string {
+  if (names.length === 0) return "";
+  if (names.length === 1) return `${names[0]} is typing...`;
+  if (names.length === 2) return `${names[0]} and ${names[1]} are typing...`;
+  return `${names[0]} and ${names.length - 1} others are typing...`;
+}
+
+/**
  * All messaging state and side-effects for the dashboard: messages, group
  * switching + per-group caches, incremental polling, realtime (Pusher)
  * subscriptions, optimistic send/react/delete, pagination, typing
@@ -77,9 +89,14 @@ export function useChat({
   const [replyTo, setReplyTo] = useState<Message | null>(null);
   const [actionError, setActionError] = useState("");
   // Real-time state
-  const [typingUsers, setTypingUsers] = useState<Set<string>>(new Set());
+  // Map of userId → username for users currently typing (per-user timeouts)
+  const [typingUsers, setTypingUsers] = useState<Map<string, string>>(
+    new Map()
+  );
   const [onlineCount, setOnlineCount] = useState<number>(0);
-  const typingTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const typingTimeoutsRef = useRef<
+    Map<string, ReturnType<typeof setTimeout>>
+  >(new Map());
   // Debounce typing broadcasts so long messages don't fire one per keystroke
   const typingSentAtRef = useRef(0);
   const TYPING_DEBOUNCE_MS = 2000;
@@ -280,23 +297,27 @@ export function useChat({
           prev.map((m) => m.id === messageId ? { ...m, reactions } : m)
         );
       },
-      onTyping: (typerUserId) => {
+      onTyping: (typerUserId, typerUsername) => {
+        if (typerUserId === userId) return; // don't show "you are typing"
         setTypingUsers((prev) => {
-          if (typerUserId === userId) return prev; // don't show "you are typing"
-          const next = new Set(prev);
-          next.add(typerUserId);
+          const next = new Map(prev);
+          next.set(typerUserId, typerUsername);
           return next;
         });
-        // Auto-hide typing indicator after 3s of no events
-        if (typingTimeoutRef.current) clearTimeout(typingTimeoutRef.current);
-        typingTimeoutRef.current = setTimeout(() => {
-          setTypingUsers((prev) => {
-            if (typerUserId === userId) return prev;
-            const next = new Set(prev);
-            next.delete(typerUserId);
-            return next;
-          });
-        }, 3000);
+        // Auto-hide this user's indicator after 3s of no events
+        const existing = typingTimeoutsRef.current.get(typerUserId);
+        if (existing) clearTimeout(existing);
+        typingTimeoutsRef.current.set(
+          typerUserId,
+          setTimeout(() => {
+            typingTimeoutsRef.current.delete(typerUserId);
+            setTypingUsers((prev) => {
+              const next = new Map(prev);
+              next.delete(typerUserId);
+              return next;
+            });
+          }, 3000)
+        );
       },
       onPresenceChange: (count) => {
         setOnlineCount(count);
@@ -314,9 +335,15 @@ export function useChat({
       }).catch(() => {});
     }
 
+    // Stable map of per-user typing timeouts (captured for the cleanup)
+    const typingTimeouts = typingTimeoutsRef.current;
+
     return () => {
       unsubscribeFromGroup(groupId);
-      if (typingTimeoutRef.current) clearTimeout(typingTimeoutRef.current);
+      for (const timeout of typingTimeouts.values()) {
+        clearTimeout(timeout);
+      }
+      typingTimeouts.clear();
     };
   }, [selectedGroupId, userId]);
 

@@ -39,7 +39,7 @@ import {
   joinGroupAction,
   leaveGroupAction,
 } from "@/lib/actions/groups";
-import { useChat } from "@/lib/hooks/use-chat";
+import { formatTypingIndicator, useChat } from "@/lib/hooks/use-chat";
 import { showToast } from "@/lib/toast";
 
 export function Dashboard({
@@ -410,10 +410,10 @@ export function Dashboard({
                       onDelete={handleDeleteMessage}
                     />
                   ))}
-                  {/* Typing indicator — shows when other users are typing */}
+                  {/* Typing indicator — shows who is typing */}
                   {typingUsers.size > 0 && (
                     <div className="px-1 py-2 text-xs text-zinc-400 animate-pulse">
-                      Someone is typing...
+                      {formatTypingIndicator([...typingUsers.values()])}
                     </div>
                   )}
                   <div ref={messagesEndRef} />
