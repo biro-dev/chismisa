@@ -55,6 +55,23 @@ npm run dev
 
 Open [http://localhost:3000](http://localhost:3000).
 
+## Testing
+
+The project uses [Vitest](https://vitest.dev/) with Testing Library. Tests run in CI (GitHub Actions) on every push/PR to `main` — lint, type-check, tests, and build.
+
+```bash
+npm test        # run the full test suite once
+npx vitest      # watch mode during development
+```
+
+Coverage highlights:
+
+- **Server actions** — auth (auto-register login), groups (create/join/leave/delete), messages (send/reply/react/delete/poll), admin (secret verification, member removal)
+- **Libs** — session JWT round-trip, sliding-window rate limiter
+- **Components** (`jsdom` via `// @vitest-environment jsdom`) — `MessageBubble` (rendering, reactions, deletion, read receipts) and `GroupSidebar` (selection, modals, theme toggle)
+
+Server-only code is tested without a live database by mocking `@/lib/db` (see `src/test/setup.ts` and the stubs in `src/test/stubs/`).
+
 ## Deployment on Vercel
 
 1. Push this repo to GitHub.
