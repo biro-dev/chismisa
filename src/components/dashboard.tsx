@@ -44,6 +44,7 @@ import {
   sendMessageAction,
   reactToMessageAction,
   deleteMessageAction,
+  markGroupAsRead,
 } from "@/lib/actions/messages";
 import {
   setRealtimeHandlers,
@@ -362,6 +363,41 @@ export function Dashboard({
       if (typingTimeoutRef.current) clearTimeout(typingTimeoutRef.current);
     };
   }, [selectedGroupId, userId]);
+
+  // Prompt read receipts — keep the viewer's `lastReadAt` fresh so other
+  // members' "Seen by N" counts update quickly, instead of waiting for the
+  // 30s backup poll's server-side side-effect. Throttled to one request per
+  // 5s and skipped entirely when the tab isn't visible.
+  const lastReadMarkAtRef = useRef(0);
+  const markGroupRead = useCallback((groupId: string) => {
+    if (typeof document !== "undefined" && document.hidden) return;
+    const now = Date.now();
+    if (now - lastReadMarkAtRef.current < 5000) return;
+    lastReadMarkAtRef.current = now;
+    markGroupAsRead(groupId).catch(() => {
+      // non-critical — the poll side-effect will catch up
+    });
+  }, []);
+
+  // Mark the group read when it's opened…
+  useEffect(() => {
+    if (selectedGroupId) markGroupRead(selectedGroupId);
+  }, [selectedGroupId, markGroupRead]);
+
+  // …and when new messages arrive while it's being viewed.
+  useEffect(() => {
+    if (selectedGroupId && messages.length > 0) markGroupRead(selectedGroupId);
+  }, [messages.length, selectedGroupId, markGroupRead]);
+
+  // …and when the user returns to the tab.
+  useEffect(() => {
+    if (!selectedGroupId) return;
+    const onVisible = () => {
+      if (!document.hidden) markGroupRead(selectedGroupId);
+    };
+    document.addEventListener("visibilitychange", onVisible);
+    return () => document.removeEventListener("visibilitychange", onVisible);
+  }, [selectedGroupId, markGroupRead]);
 
   // Smart auto-scroll — only scrolls to bottom if the user is already near it.
   // Uses direct scrollTop + rAF instead of scrollIntoView for smoother, cheaper scrolling.
