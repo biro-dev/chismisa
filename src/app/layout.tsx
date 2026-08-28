@@ -2,6 +2,7 @@ import type { Metadata, Viewport } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
 import "./globals.css";
 import { NativeInit } from "@/components/native-init";
+import { ToastViewport } from "@/components/toast-viewport";
 
 const geistSans = Geist({
   variable: "--font-geist-sans",
@@ -48,6 +49,7 @@ export default function RootLayout({ children }: LayoutProps<"/">) {
       <body className="min-h-full flex flex-col bg-[#0a0612] text-zinc-100">
         <NativeInit />
         {children}
+        <ToastViewport />
       </body>
     </html>
   );

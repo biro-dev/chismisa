@@ -39,6 +39,7 @@ import {
   leaveGroupAction,
 } from "@/lib/actions/groups";
 import { useChat } from "@/lib/hooks/use-chat";
+import { showToast } from "@/lib/toast";
 
 export function Dashboard({
   username,
@@ -198,6 +199,7 @@ export function Dashboard({
     try {
       await navigator.clipboard.writeText(selectedGroup.code);
       setCopied(true);
+      showToast("Invite code copied to clipboard");
       setTimeout(() => setCopied(false), 2000);
     } catch {
       // clipboard not available
@@ -211,6 +213,7 @@ export function Dashboard({
       const link = `${window.location.origin}/join/${selectedGroup.code}`;
       await navigator.clipboard.writeText(link);
       setCopied(true);
+      showToast("Invite link copied to clipboard");
       setTimeout(() => setCopied(false), 2000);
     } catch {
       // clipboard not available
@@ -233,6 +236,11 @@ export function Dashboard({
       if (result.success) {
         removeGroupFromState(confirmModal.groupId);
         setConfirmModal(null);
+        showToast(
+          confirmModal.type === "leave"
+            ? "You left the group."
+            : "Group deleted."
+        );
         router.refresh();
       } else {
         setActionError(result.error || "Failed to perform action.");
