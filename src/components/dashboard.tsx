@@ -10,6 +10,7 @@ import {
 import { useRouter } from "next/navigation";
 import {
   Check,
+  ChevronDown,
   Copy,
   CornerUpLeft,
   Hash,
@@ -84,6 +85,8 @@ export function Dashboard({
     removeGroupFromState,
     typingUsers,
     onlineCount,
+    isNearBottom,
+    scrollToBottom,
     messagesEndRef,
     scrollContainerRef,
   } = chat;
@@ -417,6 +420,17 @@ export function Dashboard({
                 </div>
               )}
             </div>
+
+            {/* Jump to bottom — shown when the user has scrolled up */}
+            {!isNearBottom && messages.length > 0 && (
+              <button
+                onClick={() => scrollToBottom()}
+                className="absolute bottom-28 left-1/2 z-10 flex h-10 w-10 -translate-x-1/2 items-center justify-center rounded-full border border-zinc-700 bg-[#141019] text-zinc-300 shadow-xl transition-colors hover:bg-zinc-800 hover:text-white"
+                title="Jump to latest messages"
+              >
+                <ChevronDown className="h-5 w-5" />
+              </button>
+            )}
 
             {/* Action error banner */}
             {actionError && (

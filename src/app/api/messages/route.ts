@@ -72,8 +72,14 @@ export async function GET(request: NextRequest) {
   const messages = await db.message.findMany({
     where: {
       groupId,
-      ...(since ? { createdAt: { gt: new Date(since) } } : {}),
-      ...(before ? { createdAt: { lt: new Date(before) } } : {}),
+      ...(since || before
+        ? {
+            createdAt: {
+              ...(since ? { gt: new Date(since) } : {}),
+              ...(before ? { lt: new Date(before) } : {}),
+            },
+          }
+        : {}),
     },
     include: {
       user: {

@@ -87,6 +87,8 @@ export function useChat({
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const scrollContainerRef = useRef<HTMLDivElement>(null);
   const isNearBottomRef = useRef(true);
+  // State mirror of isNearBottomRef so the UI (jump-to-bottom button) can react
+  const [isNearBottom, setIsNearBottom] = useState(true);
   const scrollRafRef = useRef<number | null>(null);
   const [hasMore, setHasMore] = useState(true);
   const [loadingOlder, setLoadingOlder] = useState(false);
@@ -171,12 +173,21 @@ export function useChat({
       if (!el) return;
       const distanceFromBottom = el.scrollHeight - el.scrollTop - el.clientHeight;
       isNearBottomRef.current = distanceFromBottom < 100;
+      setIsNearBottom(distanceFromBottom < 100);
       // Trigger loading older messages when scrolled near the top
       if (el.scrollTop < 50) {
         loadOlderMessages();
       }
     });
   }, [loadOlderMessages]);
+
+  // Scroll the message list back to the newest message (jump-to-bottom button)
+  const scrollToBottom = useCallback((smooth = true) => {
+    const el = scrollContainerRef.current;
+    if (el) {
+      el.scrollTo({ top: el.scrollHeight, behavior: smooth ? "smooth" : "auto" });
+    }
+  }, []);
 
   // Incremental polling — only fetches messages newer than the last known one.
   // Pauses when the tab is hidden.
@@ -548,6 +559,11 @@ export function useChat({
       setReplyTo(null);
       setActionError("");
 
+      // Open the new group at the bottom (fresh view, not the previous
+      // group's scroll position)
+      isNearBottomRef.current = true;
+      setIsNearBottom(true);
+
       // Build GroupDetails from the groups list (we have name/code/memberCount)
       const group = groups.find((g) => g.id === groupId);
       if (!group) return;
@@ -676,6 +692,8 @@ export function useChat({
     removeGroupFromState,
     typingUsers,
     onlineCount,
+    isNearBottom,
+    scrollToBottom,
     messagesEndRef,
     scrollContainerRef,
   };
