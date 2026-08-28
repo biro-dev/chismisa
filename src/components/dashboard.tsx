@@ -25,6 +25,10 @@ import { GroupSidebar } from "@/components/group-sidebar";
 import { MessageBubble } from "@/components/message-bubble";
 import { Modal } from "@/components/modal";
 import {
+  setBadgeHandler,
+  watchGroups,
+} from "@/lib/realtime";
+import {
   applyTheme,
   getThemeServerSnapshot,
   getThemeSnapshot,
@@ -81,6 +85,7 @@ export function Dashboard({
     handleSendMessage,
     handleReact,
     handleDeleteMessage,
+    handleEditMessage,
     selectGroup,
     removeGroupFromState,
     typingUsers,
@@ -167,6 +172,25 @@ export function Dashboard({
       document.removeEventListener("visibilitychange", onVisible);
     };
   }, [selectedGroupId]);
+
+  // Real-time unread badges: subscribe to every group's channel and bump the
+  // sidebar badge the moment a message lands, instead of waiting for the 30s
+  // poll. The active group stays at zero since the user is viewing it.
+  useEffect(() => {
+    setBadgeHandler((groupId) => {
+      setGroupsState((prev) =>
+        prev.map((g) =>
+          g.id === groupId && g.id !== selectedGroupId
+            ? { ...g, unreadCount: (g.unreadCount ?? 0) + 1 }
+            : g
+        )
+      );
+    });
+  }, [selectedGroupId]);
+
+  useEffect(() => {
+    watchGroups(groups.map((g) => g.id));
+  }, [groups]);
 
   // Selecting a group from the sidebar also closes the mobile drawer and
   // clears that group's unread badge immediately (before the server poll).
@@ -408,6 +432,7 @@ export function Dashboard({
                       onReply={handleReply}
                       onReact={handleReact}
                       onDelete={handleDeleteMessage}
+                      onEdit={handleEditMessage}
                     />
                   ))}
                   {/* Typing indicator — shows who is typing */}

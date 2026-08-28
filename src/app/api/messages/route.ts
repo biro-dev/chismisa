@@ -119,6 +119,7 @@ export async function GET(request: NextRequest) {
       // chosen username in this group.
       username: m.user.username,
       deletedAt: m.deletedAt ? m.deletedAt.toISOString() : null,
+      editedAt: m.editedAt ? m.editedAt.toISOString() : null,
       createdAt: m.createdAt.toISOString(),
       // Seen count: how many OTHER members have read up to this message
       seenCount:

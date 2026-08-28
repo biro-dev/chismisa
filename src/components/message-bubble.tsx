@@ -1,7 +1,7 @@
 "use client";
 
 import { memo, useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { CornerUpLeft, Smile, Trash2 } from "lucide-react";
+import { CornerUpLeft, Pencil, Smile, Trash2 } from "lucide-react";
 import { Capacitor } from "@capacitor/core";
 import { Haptics, ImpactStyle } from "@capacitor/haptics";
 import type { Message, MessageReaction } from "@/lib/types";
@@ -25,24 +25,23 @@ const areReactionsEqual = (a: MessageReaction[], b: MessageReaction[]) => {
 
 // Custom memo comparator — only re-renders a bubble when its own data changed.
 // This prevents every bubble from re-rendering on each 30s poll.
+type MessageBubbleProps = {
+  msg: Message;
+  isOwn: boolean;
+  userId: string;
+  onReply: (msg: Message) => void;
+  onReact: (messageId: string, emoji: string) => void;
+  onDelete: (messageId: string) => void;
+  onEdit: (messageId: string, content: string) => Promise<{ error?: string }>;
+};
+
 const messageBubbleAreEqual = (
-  prev: {
-    msg: Message;
-    isOwn: boolean;
-    userId: string;
-    onReply: (msg: Message) => void;
-    onReact: (messageId: string, emoji: string) => void;
-  },
-  next: {
-    msg: Message;
-    isOwn: boolean;
-    userId: string;
-    onReply: (msg: Message) => void;
-    onReact: (messageId: string, emoji: string) => void;
-  }
+  prev: MessageBubbleProps,
+  next: MessageBubbleProps
 ) => {
   if (prev.msg.id !== next.msg.id) return false;
   if (prev.msg.content !== next.msg.content) return false;
+  if (prev.msg.editedAt !== next.msg.editedAt) return false;
   if (prev.msg.username !== next.msg.username) return false;
   if (prev.msg.createdAt !== next.msg.createdAt) return false;
   if (prev.isOwn !== next.isOwn) return false;
@@ -63,16 +62,16 @@ export const MessageBubble = memo(function MessageBubble({
   onReply,
   onReact,
   onDelete,
-}: {
-  msg: Message;
-  isOwn: boolean;
-  userId: string;
-  onReply: (msg: Message) => void;
-  onReact: (messageId: string, emoji: string) => void;
-  onDelete: (messageId: string) => void;
-}) {
+  onEdit,
+}: MessageBubbleProps) {
   const [reactionMenuOpen, setReactionMenuOpen] = useState(false);
   const [highlightedEmoji, setHighlightedEmoji] = useState<string | null>(null);
+  // Inline edit state — the editor lives in the bubble so each message owns
+  // its own open/closed state without any global tracking.
+  const [isEditing, setIsEditing] = useState(false);
+  const [editDraft, setEditDraft] = useState("");
+  const [editError, setEditError] = useState("");
+  const editInputRef = useRef<HTMLTextAreaElement>(null);
   const pressTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const isDraggingRef = useRef(false);
   const suppressClickRef = useRef(false);
@@ -226,6 +225,33 @@ export const MessageBubble = memo(function MessageBubble({
     setReactionMenuOpen((open) => !open);
   }, []);
 
+  // --- Inline editing ---
+
+  const startEditing = useCallback(() => {
+    setEditDraft(msg.content);
+    setEditError("");
+    setIsEditing(true);
+    // Focus the textarea once it has rendered
+    requestAnimationFrame(() => editInputRef.current?.focus());
+  }, [msg.content]);
+
+  const cancelEditing = useCallback(() => {
+    setIsEditing(false);
+    setEditDraft("");
+    setEditError("");
+  }, []);
+
+  const saveEdit = useCallback(async () => {
+    const result = await onEdit(msg.id, editDraft);
+    if (result.error) {
+      setEditError(result.error);
+      return;
+    }
+    setIsEditing(false);
+    setEditDraft("");
+    setEditError("");
+  }, [onEdit, msg.id, editDraft]);
+
   return (
     <div
       className={`group msg-bubble flex ${isOwn ? "justify-end" : "justify-start"}`}
@@ -271,6 +297,42 @@ export const MessageBubble = memo(function MessageBubble({
           )}
           {msg.deletedAt ? (
             <p className="italic">This message was deleted</p>
+          ) : isEditing ? (
+            <div className="space-y-2">
+              <textarea
+                ref={editInputRef}
+                value={editDraft}
+                onChange={(e) => setEditDraft(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter" && !e.shiftKey) {
+                    e.preventDefault();
+                    saveEdit();
+                  } else if (e.key === "Escape") {
+                    cancelEditing();
+                  }
+                }}
+                rows={Math.min(4, Math.max(1, editDraft.split("\n").length))}
+                maxLength={2000}
+                placeholder="Edit your message..."
+                className="w-full resize-none rounded-lg bg-black/20 p-2 text-sm text-white outline-none placeholder:text-zinc-400"
+              />
+              {editError && <p className="text-xs text-red-300">{editError}</p>}
+              <div className="flex justify-end gap-2">
+                <button
+                  onClick={cancelEditing}
+                  className="rounded-lg px-2.5 py-1 text-xs font-semibold text-zinc-300 transition-colors hover:bg-black/20"
+                >
+                  Cancel
+                </button>
+                <button
+                  onClick={saveEdit}
+                  disabled={!editDraft.trim()}
+                  className="rounded-lg bg-white/20 px-2.5 py-1 text-xs font-semibold text-white transition-colors hover:bg-white/30 disabled:opacity-50"
+                >
+                  Save
+                </button>
+              </div>
+            </div>
           ) : (
             <p className="whitespace-pre-wrap break-words">
               {msg.content}
@@ -321,6 +383,16 @@ export const MessageBubble = memo(function MessageBubble({
               title="Reply"
             >
               <CornerUpLeft className="h-3.5 w-3.5" />
+            </button>
+          )}
+          {/* Edit button — only on own non-deleted messages, hidden while editing */}
+          {isOwn && !msg.deletedAt && !isEditing && (
+            <button
+              onClick={startEditing}
+              className="rounded-lg p-1.5 text-zinc-500 transition-colors hover:bg-zinc-800 hover:text-sky-400"
+              title="Edit message"
+            >
+              <Pencil className="h-3.5 w-3.5" />
             </button>
           )}
           {/* Delete button — only on own messages that aren't already deleted */}
@@ -382,6 +454,10 @@ export const MessageBubble = memo(function MessageBubble({
           }`}
         >
           {formattedTime}
+          {/* Edited marker */}
+          {!msg.deletedAt && msg.editedAt && (
+            <span className="ml-1.5 italic text-zinc-500">(edited)</span>
+          )}
           {/* Read receipt — anonymous count of who has seen it */}
           {isOwn && !msg.deletedAt && (msg.seenCount ?? 0) > 0 && (
             <span className="ml-1.5 text-emerald-500">

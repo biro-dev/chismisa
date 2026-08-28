@@ -54,6 +54,7 @@ vi.mock("@/lib/pusher", () => ({ triggerGroupEvent: vi.fn() }));
 import { triggerGroupEvent } from "@/lib/pusher";
 import {
   deleteMessageAction,
+  editMessageAction,
   getMessages,
   markGroupAsRead,
   reactToMessageAction,
@@ -289,6 +290,88 @@ describe("getMessages", () => {
     expect(await getMessages("g1")).toEqual([]);
     expect(dbMock.message.findMany).not.toHaveBeenCalled();
   });
+
+describe("editMessageAction", () => {
+  const OWN_MESSAGE = {
+    id: "msg_9",
+    content: "original",
+    groupId: "g1",
+    userId: "user_1",
+    deletedAt: null,
+  };
+
+  it("rejects unauthenticated users", async () => {
+    sessionMock.getSession.mockResolvedValueOnce(null);
+    expect(await editMessageAction("msg_9", "new text")).toEqual({
+      error: "Not authenticated.",
+    });
+  });
+
+  it("rejects empty content", async () => {
+    expect(await editMessageAction("msg_9", "   ")).toEqual({
+      error: "Message content is required.",
+    });
+  });
+
+  it("rejects content over 2000 characters", async () => {
+    expect(await editMessageAction("msg_9", "x".repeat(2001))).toEqual({
+      error: "Message is too long (max 2000 characters).",
+    });
+  });
+
+  it("rejects edits to a deleted message", async () => {
+    dbMock.message.findUnique.mockResolvedValueOnce({
+      ...OWN_MESSAGE,
+      deletedAt: new Date(),
+    });
+    expect(await editMessageAction("msg_9", "new text")).toEqual({
+      error: "This message was deleted.",
+    });
+  });
+
+  it("rejects edits to another user's message", async () => {
+    dbMock.message.findUnique.mockResolvedValueOnce({
+      ...OWN_MESSAGE,
+      userId: "user_2",
+    });
+    expect(await editMessageAction("msg_9", "new text")).toEqual({
+      error: "You can only edit your own messages.",
+    });
+  });
+
+  it("updates the message, stamps editedAt, and broadcasts the edit", async () => {
+    const editedAt = new Date("2026-01-03T12:00:00Z");
+    dbMock.message.findUnique.mockResolvedValueOnce(OWN_MESSAGE);
+    dbMock.message.update.mockResolvedValueOnce({
+      ...OWN_MESSAGE,
+      content: "new text",
+      editedAt,
+    });
+
+    const result = await editMessageAction("msg_9", "  new text  ");
+    expect(result).toEqual({ success: true });
+    expect(dbMock.message.update).toHaveBeenCalledWith({
+      where: { id: "msg_9" },
+      data: { content: "new text", editedAt: expect.any(Date) },
+    });
+
+    // The realtime broadcast must fire via after() with the trimmed content
+    await runAfterCallbacks();
+    expect(triggerGroupEvent).toHaveBeenCalledWith("g1", "message-edited", {
+      messageId: "msg_9",
+      content: "new text",
+      editedAt: "2026-01-03T12:00:00.000Z",
+    });
+  });
+
+  it("returns an error when the message does not exist", async () => {
+    dbMock.message.findUnique.mockResolvedValueOnce(null);
+    expect(await editMessageAction("missing", "new text")).toEqual({
+      error: "Message not found.",
+    });
+  });
+});
+
 
   it("returns messages in chronological order with mapped fields", async () => {
     dbMock.groupMember.findUnique.mockResolvedValue({ id: "m1" });

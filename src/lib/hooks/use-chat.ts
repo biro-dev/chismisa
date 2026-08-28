@@ -11,6 +11,7 @@ import { useRouter } from "next/navigation";
 import type { Group, GroupDetails, Message } from "@/lib/types";
 import {
   deleteMessageAction,
+  editMessageAction,
   markGroupAsRead,
   reactToMessageAction,
   sendMessageAction,
@@ -289,6 +290,13 @@ export function useChat({
             m.id === messageId
               ? { ...m, deletedAt: new Date().toISOString(), content: "" }
               : m
+          )
+        );
+      },
+      onMessageEdited: (messageId, content, editedAt) => {
+        setMessages((prev) =>
+          prev.map((m) =>
+            m.id === messageId ? { ...m, content, editedAt } : m
           )
         );
       },
@@ -671,6 +679,35 @@ export function useChat({
     [groups, router, startTransition]
   );
 
+  // Edit a message — updates local state on success so the change is instant
+  // for the sender; other members receive it via the `message-edited`
+  // realtime event (or the 30s backup poll). Returns any error so the inline
+  // editor in the bubble can keep itself open and show it.
+  const handleEditMessage = useCallback(
+    async (
+      messageId: string,
+      content: string
+    ): Promise<{ error?: string }> => {
+      const trimmed = content.trim();
+      if (!trimmed) return { error: "Message content is required." };
+      try {
+        const result = await editMessageAction(messageId, trimmed);
+        if (result.error) return { error: result.error };
+        setMessages((prev) =>
+          prev.map((m) =>
+            m.id === messageId
+              ? { ...m, content: trimmed, editedAt: new Date().toISOString() }
+              : m
+          )
+        );
+        return {};
+      } catch {
+        return { error: "Failed to edit message." };
+      }
+    },
+    []
+  );
+
   // Called by the Dashboard after a confirmed leave/delete: clears the
   // per-group caches and switches to another group (or the empty state) if
   // the removed group was the one being viewed.
@@ -715,6 +752,7 @@ export function useChat({
     handleSendMessage,
     handleReact,
     handleDeleteMessage,
+    handleEditMessage,
     selectGroup,
     removeGroupFromState,
     typingUsers,

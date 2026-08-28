@@ -33,6 +33,7 @@ export type Message = {
   userId: string;
   username: string;
   deletedAt?: string | null;
+  editedAt?: string | null;
   seenCount?: number;
   createdAt: string;
   replyTo: {

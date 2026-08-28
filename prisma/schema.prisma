@@ -48,6 +48,7 @@ model Message {
   userId     String
   replyToId  String?
   deletedAt  DateTime?
+  editedAt   DateTime?
   createdAt  DateTime           @default(now())
   group      Group              @relation(fields: [groupId], references: [id], onDelete: Cascade)
   user       User               @relation(fields: [userId], references: [id], onDelete: Cascade)

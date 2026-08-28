@@ -39,6 +39,17 @@ SESSION_SECRET="your-strong-secret"
 
 # Master admin secret for /chismis-admin
 ADMIN_SECRET="your-admin-master-key"
+
+# Pusher (real-time messaging) — optional; without it the app falls
+# back to 30s polling for new messages
+PUSHER_APP_ID=""
+PUSHER_SECRET=""
+NEXT_PUBLIC_PUSHER_KEY=""
+NEXT_PUBLIC_PUSHER_CLUSTER=""
+
+# Firebase Cloud Messaging (push notifications) — optional
+FIREBASE_SERVICE_ACCOUNT=""
+NEXT_PUBLIC_FIREBASE_VAPID_KEY=""
 ```
 
 3. Run migrations:
@@ -80,6 +91,8 @@ Server-only code is tested without a live database by mocking `@/lib/db` (see `s
    - `DATABASE_URL` — your Postgres connection string
    - `SESSION_SECRET` — a strong random secret
    - `ADMIN_SECRET` — your admin master key
+   - `PUSHER_*` / `NEXT_PUBLIC_PUSHER_*` — optional, enables real-time messaging
+   - `FIREBASE_SERVICE_ACCOUNT` / `NEXT_PUBLIC_FIREBASE_VAPID_KEY` — optional, enables push notifications
 4. Deploy!
 
 Vercel will automatically run `npm install` (which runs `prisma generate`) and `next build`.
@@ -89,6 +102,12 @@ Vercel will automatically run `npm install` (which runs `prisma generate`) and `
 ## Features
 
 - 🔐 **Auto-register login** — just pick a username and password
-- 👥 **Group chat** — create or join groups with invite codes
-- 💬 **Real-time messaging** — 200 latest messages per group
+- 👥 **Group chat** — create or join groups with invite codes (shareable `/join/{code}` links)
+- 💬 **Real-time messaging** — Pusher channels with a 30s polling fallback; 200 latest messages per group
+- ✏️ **Message editing** — edit your own messages inline; updates broadcast in real time with an "(edited)" marker
+- ↩️ **Replies & reactions** — threaded quoting and per-user emoji reactions
+- ✅ **Read receipts & unread badges** — per-group unread counts, updated instantly over real-time
+- ⌨️ **Typing indicators** — shows who's typing, per-user timeouts
+- 🔔 **Push notifications** — FCM on Android (Capacitor) and web, with tap-through to the group
+- 🌓 **Dark/light theme**, toasts, jump-to-bottom, and sliding session renewal (active users stay logged in)
 - 🛡️ **Admin panel** — `/chismis-admin` with secret-key access to view/delete groups & messages

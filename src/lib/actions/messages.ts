@@ -16,6 +16,7 @@ export type MessageResult = {
     userId: string;
     username: string;
     createdAt: string;
+    editedAt: string | null;
     replyTo: {
       id: string;
       content: string;
@@ -189,6 +190,7 @@ export async function sendMessageAction(formData: FormData): Promise<MessageResu
       userId: created.userId,
       username: created.user.username,
       createdAt: created.createdAt.toISOString(),
+      editedAt: null,
       replyTo: created.replyTo
         ? {
             id: created.replyTo.id,
@@ -359,6 +361,57 @@ export async function deleteMessageAction(
   }
 }
 
+// Edit a message — only the sender can edit, and only while it hasn't been
+// deleted. The edit is broadcast to the group so every member's view updates
+// without waiting for the 30s poll.
+export async function editMessageAction(
+  messageId: string,
+  content: string
+): Promise<MessageResult> {
+  const session = await getSession();
+  if (!session) return { error: "Not authenticated." };
+
+  const trimmed = content?.trim();
+  if (!trimmed) {
+    return { error: "Message content is required." };
+  }
+  if (trimmed.length > 2000) {
+    return { error: "Message is too long (max 2000 characters)." };
+  }
+
+  try {
+    const message = await db.message.findUnique({ where: { id: messageId } });
+    if (!message) return { error: "Message not found." };
+    if (message.deletedAt) {
+      return { error: "This message was deleted." };
+    }
+    if (message.userId !== session.userId) {
+      return { error: "You can only edit your own messages." };
+    }
+
+    const updated = await db.message.update({
+      where: { id: messageId },
+      data: { content: trimmed, editedAt: new Date() },
+    });
+
+    // Broadcast the edit to other group members via real-time - scheduled
+    // after the response so it survives serverless teardown.
+    after(() => {
+      triggerGroupEvent(message.groupId, "message-edited", {
+        messageId,
+        content: trimmed,
+        editedAt: updated.editedAt ? updated.editedAt.toISOString() : null,
+      });
+    });
+
+    revalidatePath("/");
+    return { success: true };
+  } catch (err) {
+    console.error("Edit message error:", err);
+    return { error: "Failed to edit message." };
+  }
+}
+
 // Mark the group as read for the current user (updates lastReadAt).
 // Called automatically while the user is viewing the group.
 export async function markGroupAsRead(groupId: string): Promise<void> {
@@ -430,6 +483,7 @@ export async function getMessages(groupId: string) {
     // chosen username in this group.
     username: m.user.username,
     deletedAt: m.deletedAt ? m.deletedAt.toISOString() : null,
+    editedAt: m.editedAt ? m.editedAt.toISOString() : null,
     createdAt: m.createdAt.toISOString(),
     replyTo: m.replyTo
       ? {

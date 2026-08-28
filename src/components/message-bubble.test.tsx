@@ -29,6 +29,7 @@ function makeBubble(overrides: Partial<Message> = {}, isOwn = false) {
   const onReply = vi.fn();
   const onReact = vi.fn();
   const onDelete = vi.fn();
+  const onEdit = vi.fn();
   render(
     <MessageBubble
       msg={msg}
@@ -37,6 +38,7 @@ function makeBubble(overrides: Partial<Message> = {}, isOwn = false) {
       onReply={onReply}
       onReact={onReact}
       onDelete={onDelete}
+      onEdit={onEdit}
     />
   );
   return { msg, onReply, onReact, onDelete };
@@ -89,6 +91,7 @@ describe("MessageBubble", () => {
         onReply={vi.fn()}
         onReact={vi.fn()}
         onDelete={vi.fn()}
+        onEdit={vi.fn()}
       />
     );
     expect(screen.getAllByTitle("Delete message").length).toBeGreaterThan(0);
@@ -147,6 +150,7 @@ describe("MessageBubble", () => {
       const onReply = vi.fn();
       const onReact = vi.fn();
       const onDelete = vi.fn();
+      const onEdit = vi.fn();
       const rendered = render(
         <MessageBubble
           msg={baseMessage}
@@ -155,6 +159,7 @@ describe("MessageBubble", () => {
           onReply={onReply}
           onReact={onReact}
           onDelete={onDelete}
+          onEdit={onEdit}
         />
       );
       return rendered;

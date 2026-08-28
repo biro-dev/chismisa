@@ -14,6 +14,12 @@ export type MessageDeletedPayload = {
   messageId: string;
 };
 
+export type MessageEditedPayload = {
+  messageId: string;
+  content: string;
+  editedAt: string | null;
+};
+
 export type ReactionUpdatedPayload = {
   messageId: string;
   reactions: {
@@ -34,6 +40,11 @@ export type TypingPayload = {
 export type RealtimeHandlers = {
   onNewMessage?: (message: Message) => void;
   onMessageDeleted?: (messageId: string) => void;
+  onMessageEdited?: (
+    messageId: string,
+    content: string,
+    editedAt: string | null
+  ) => void;
   onReactionUpdated?: (
     messageId: string,
     reactions: ReactionUpdatedPayload["reactions"]
@@ -103,6 +114,10 @@ export function subscribeToGroup(groupId: string): Channel | null {
     handlers.onMessageDeleted?.(payload.messageId);
   });
 
+  channel.bind("message-edited", (payload: MessageEditedPayload) => {
+    handlers.onMessageEdited?.(payload.messageId, payload.content, payload.editedAt);
+  });
+
   channel.bind("user-typing", (payload: TypingPayload) => {
     handlers.onTyping?.(payload.userId, payload.username);
   });
@@ -140,13 +155,69 @@ export function subscribeToPresence(groupId: string): PresenceChannel | null {
 export function unsubscribeFromGroup(groupId: string): void {
   if (!pusher) return;
 
-  const names = [`private-group-${groupId}`, `presence-group-${groupId}`];
-  for (const name of names) {
-    if (channels.has(name)) {
-      pusher.unsubscribe(name);
-      channels.delete(name);
+  const name = `private-group-${groupId}`;
+  // If the channel is also watched for unread badges, keep it alive — just
+  // drop the active-group handlers and rebind the badge listener.
+  if (badgeWatchedChannels.has(name)) {
+    const channel = channels.get(name);
+    if (channel) {
+      channel.unbind();
+      channel.bind("new-message", () => badgeHandler?.(groupId));
     }
+    return;
   }
+  if (channels.has(name)) {
+    pusher.unsubscribe(name);
+    channels.delete(name);
+  }
+}
+
+// --- Unread badge watching ---
+// Subscribes to every group the user belongs to (not just the active one) so
+// the sidebar's unread badges update instantly via real-time instead of only
+// on the 30s /api/groups poll. Channels created here are kept alive when the
+// user switches groups — only the active-group handlers are rebound.
+
+const badgeWatchedChannels = new Set<string>();
+let badgeHandler: ((groupId: string) => void) | null = null;
+
+/** Register the callback that fires when a watched group receives a message. */
+export function setBadgeHandler(fn: (groupId: string) => void): void {
+  badgeHandler = fn;
+}
+
+/**
+ * Subscribe to all the given groups' private channels for badge updates.
+ * Idempotent — already-subscribed channels (e.g. the active group's) are
+ * reused and only get the badge binding added.
+ */
+export function watchGroups(groupIds: string[]): void {
+  const instance = getPusher();
+  if (!instance) return;
+
+  for (const groupId of groupIds) {
+    const name = `private-group-${groupId}`;
+    if (badgeWatchedChannels.has(name)) continue;
+
+    let channel = channels.get(name);
+    if (!channel) {
+      channel = instance.subscribe(name);
+      channels.set(name, channel);
+    }
+    badgeWatchedChannels.add(name);
+    channel.bind("new-message", () => badgeHandler?.(groupId));
+  }
+}
+
+/** Clean up all channels and disconnect (call on logout / page unload). */
+export function disconnectRealtime(): void {
+  if (pusher) {
+    pusher.disconnect();
+    pusher = null;
+  }
+  channels.clear();
+  badgeWatchedChannels.clear();
+  badgeHandler = null;
 }
 
 /** Send a typing event via the REST API (debounced by the caller). */
@@ -164,11 +235,3 @@ export async function sendTyping(groupId: string): Promise<void> {
   }
 }
 
-/** Clean up all channels and disconnect (call on logout / page unload). */
-export function disconnectRealtime(): void {
-  if (pusher) {
-    pusher.disconnect();
-    pusher = null;
-  }
-  channels.clear();
-}
