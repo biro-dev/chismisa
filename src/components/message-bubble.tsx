@@ -1,0 +1,398 @@
+"use client";
+
+import { memo, useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { CornerUpLeft, Smile, Trash2 } from "lucide-react";
+import { Capacitor } from "@capacitor/core";
+import { Haptics, ImpactStyle } from "@capacitor/haptics";
+import type { Message, MessageReaction } from "@/lib/types";
+
+const REACTION_EMOJIS = ["👍", "❤️", "😂", "🎉", "😮"];
+
+// Deep-compare reactions to avoid re-rendering bubbles when data didn't change
+const areReactionsEqual = (a: MessageReaction[], b: MessageReaction[]) => {
+  if (a.length !== b.length) return false;
+  for (let i = 0; i < a.length; i++) {
+    if (
+      a[i].id !== b[i].id ||
+      a[i].emoji !== b[i].emoji ||
+      a[i].userId !== b[i].userId
+    ) {
+      return false;
+    }
+  }
+  return true;
+};
+
+// Custom memo comparator — only re-renders a bubble when its own data changed.
+// This prevents every bubble from re-rendering on each 30s poll.
+const messageBubbleAreEqual = (
+  prev: {
+    msg: Message;
+    isOwn: boolean;
+    userId: string;
+    onReply: (msg: Message) => void;
+    onReact: (messageId: string, emoji: string) => void;
+  },
+  next: {
+    msg: Message;
+    isOwn: boolean;
+    userId: string;
+    onReply: (msg: Message) => void;
+    onReact: (messageId: string, emoji: string) => void;
+  }
+) => {
+  if (prev.msg.id !== next.msg.id) return false;
+  if (prev.msg.content !== next.msg.content) return false;
+  if (prev.msg.username !== next.msg.username) return false;
+  if (prev.msg.createdAt !== next.msg.createdAt) return false;
+  if (prev.isOwn !== next.isOwn) return false;
+  if (prev.userId !== next.userId) return false;
+  if (prev.msg.replyTo?.id !== next.msg.replyTo?.id) return false;
+  if (prev.msg.replyTo?.content !== next.msg.replyTo?.content) return false;
+  if (prev.msg.replyTo?.username !== next.msg.replyTo?.username) return false;
+  if (!areReactionsEqual(prev.msg.reactions || [], next.msg.reactions || []))
+    return false;
+  return true;
+};
+
+// Memoized message bubble — only re-renders when its own message data changes
+export const MessageBubble = memo(function MessageBubble({
+  msg,
+  isOwn,
+  userId,
+  onReply,
+  onReact,
+  onDelete,
+}: {
+  msg: Message;
+  isOwn: boolean;
+  userId: string;
+  onReply: (msg: Message) => void;
+  onReact: (messageId: string, emoji: string) => void;
+  onDelete: (messageId: string) => void;
+}) {
+  const [reactionMenuOpen, setReactionMenuOpen] = useState(false);
+  const [highlightedEmoji, setHighlightedEmoji] = useState<string | null>(null);
+  const pressTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const isDraggingRef = useRef(false);
+  const suppressClickRef = useRef(false);
+  const highlightedEmojiRef = useRef<string | null>(null);
+  const startPosRef = useRef<{ x: number; y: number } | null>(null);
+  const pickerRef = useRef<HTMLDivElement>(null);
+
+  // Memoized formatted timestamp — computed once per message
+  const formattedTime = useMemo(
+    () =>
+      new Date(msg.createdAt).toLocaleTimeString([], {
+        hour: "numeric",
+        minute: "2-digit",
+      }),
+    [msg.createdAt]
+  );
+
+  // Group reactions by emoji — memoized so it only recomputes when reactions change
+  const groupedReactions = useMemo(() => {
+    const grouped = new Map<string, MessageReaction[]>();
+    for (const r of msg.reactions || []) {
+      const existing = grouped.get(r.emoji) || [];
+      existing.push(r);
+      grouped.set(r.emoji, existing);
+    }
+    return Array.from(grouped.entries());
+  }, [msg.reactions]);
+
+  // --- Messenger-style hold-and-slide reaction picker ---
+
+  const clearPressTimer = useCallback(() => {
+    if (pressTimerRef.current) {
+      clearTimeout(pressTimerRef.current);
+      pressTimerRef.current = null;
+    }
+  }, []);
+
+  // Clean up timer on unmount
+  useEffect(() => clearPressTimer, [clearPressTimer]);
+
+  const handlePointerDown = useCallback(
+    (e: React.PointerEvent<HTMLButtonElement>) => {
+      if (e.pointerType === "mouse") return; // desktop uses click
+      isDraggingRef.current = false;
+      highlightedEmojiRef.current = null;
+      startPosRef.current = { x: e.clientX, y: e.clientY };
+      // Capture pointer so we keep receiving move/up events even off the button
+      e.currentTarget.setPointerCapture(e.pointerId);
+      // Long-press (~200ms) opens the picker and starts drag tracking
+      pressTimerRef.current = setTimeout(() => {
+        isDraggingRef.current = true;
+        setReactionMenuOpen(true);
+        setHighlightedEmoji(null);
+        // Light haptic feedback on native (Capacitor) platforms
+        if (Capacitor.isNativePlatform()) {
+          Haptics.impact({ style: ImpactStyle.Light }).catch(() => {});
+        }
+      }, 200);
+    },
+    []
+  );
+
+  const handlePointerMove = useCallback(
+    (e: React.PointerEvent<HTMLButtonElement>) => {
+      // If not dragging yet, check if pointer moved too much (scroll gesture)
+      if (!isDraggingRef.current) {
+        const start = startPosRef.current;
+        if (start) {
+          const dx = Math.abs(e.clientX - start.x);
+          const dy = Math.abs(e.clientY - start.y);
+          if (dx > 10 || dy > 10) {
+            clearPressTimer();
+            startPosRef.current = null;
+          }
+        }
+        return;
+      }
+      if (!reactionMenuOpen) return;
+      const picker = pickerRef.current;
+      if (!picker) return;
+      const rect = picker.getBoundingClientRect();
+      const x = e.clientX;
+      const y = e.clientY;
+      // Check if pointer is within picker bounds (with padding for easier targeting)
+      const isInside =
+        x >= rect.left - 12 &&
+        x <= rect.right + 12 &&
+        y >= rect.top - 12 &&
+        y <= rect.bottom + 12;
+      if (isInside) {
+        const emojiButtons = picker.querySelectorAll<HTMLButtonElement>(
+          "[data-emoji]"
+        );
+        let found: string | null = null;
+        for (const btn of emojiButtons) {
+          const r = btn.getBoundingClientRect();
+          if (x >= r.left && x <= r.right && y >= r.top && y <= r.bottom) {
+            found = btn.dataset.emoji || null;
+            break;
+          }
+        }
+        highlightedEmojiRef.current = found;
+        setHighlightedEmoji(found);
+      } else {
+        highlightedEmojiRef.current = null;
+        setHighlightedEmoji(null);
+      }
+    },
+    [reactionMenuOpen, clearPressTimer]
+  );
+
+  const handlePointerUp = useCallback(
+    () => {
+      clearPressTimer();
+      startPosRef.current = null;
+      if (isDraggingRef.current) {
+        const emoji = highlightedEmojiRef.current;
+        if (emoji) {
+          onReact(msg.id, emoji);
+          // Haptic feedback when an emoji is selected on native
+          if (Capacitor.isNativePlatform()) {
+            Haptics.impact({ style: ImpactStyle.Medium }).catch(() => {});
+          }
+        }
+        isDraggingRef.current = false;
+        suppressClickRef.current = true;
+        setReactionMenuOpen(false);
+        setHighlightedEmoji(null);
+        highlightedEmojiRef.current = null;
+        // Reset after the click event has a chance to fire
+        requestAnimationFrame(() => {
+          suppressClickRef.current = false;
+        });
+      }
+    },
+    [clearPressTimer, onReact, msg.id]
+  );
+
+  const handlePointerCancel = useCallback(() => {
+    clearPressTimer();
+    startPosRef.current = null;
+    isDraggingRef.current = false;
+    setReactionMenuOpen(false);
+    setHighlightedEmoji(null);
+    highlightedEmojiRef.current = null;
+  }, [clearPressTimer]);
+
+  // Desktop click toggle — ignored if a drag interaction just happened
+  const handleReactButtonClick = useCallback(() => {
+    if (suppressClickRef.current) return;
+    setReactionMenuOpen((open) => !open);
+  }, []);
+
+  return (
+    <div
+      className={`group msg-bubble flex ${isOwn ? "justify-end" : "justify-start"}`}
+    >
+      <div
+        className={`max-w-[85%] sm:max-w-[70%] ${isOwn ? "items-end" : "items-start"}`}
+      >
+        <p
+          className={`mb-1 text-xs font-medium ${
+            isOwn ? "text-right text-fuchsia-400" : "text-purple-400"
+          }`}
+        >
+          {isOwn ? "You" : msg.username}
+        </p>
+        <div
+          className={`msg-bubble-content rounded-2xl px-4 py-2.5 text-sm ${
+            msg.deletedAt
+              ? "border border-dashed border-zinc-700 italic text-zinc-500"
+              : isOwn
+              ? "rounded-br-sm bg-gradient-to-r from-purple-600 to-fuchsia-600 text-white"
+              : "rounded-bl-sm bg-zinc-800 text-zinc-100"
+          }`}
+        >
+          {/* Reply indicator */}
+          {msg.replyTo && !msg.deletedAt && (
+            <div
+              className={`mb-2 flex items-start gap-1.5 border-l-2 pl-2 text-xs ${
+                isOwn
+                  ? "border-white/40 text-white/80"
+                  : "border-purple-400/60 text-zinc-400"
+              }`}
+            >
+              <CornerUpLeft className="mt-0.5 h-3 w-3 shrink-0" />
+              <div className="min-w-0">
+                <p className="font-medium">
+                  Replying to {msg.replyTo.username}
+                </p>
+                <p className="truncate opacity-80">
+                  {msg.replyTo.content}
+                </p>
+              </div>
+            </div>
+          )}
+          {msg.deletedAt ? (
+            <p className="italic">This message was deleted</p>
+          ) : (
+            <p className="whitespace-pre-wrap break-words">
+              {msg.content}
+            </p>
+          )}
+        </div>
+
+        {/* Reactions */}
+        {groupedReactions.length > 0 && (
+          <div
+            className={`mt-1 flex flex-wrap gap-1 ${
+              isOwn ? "justify-end" : ""
+            }`}
+          >
+            {groupedReactions.map(([emoji, reactions]) => (
+              <button
+                key={emoji}
+                onClick={() => onReact(msg.id, emoji)}
+                className={`flex items-center gap-1 rounded-full border px-2 py-0.5 text-xs transition-colors ${
+                  reactions.some((r) => r.userId === userId)
+                    ? "border-purple-500/50 bg-purple-600/20 text-purple-200"
+                    : "border-zinc-700/60 bg-zinc-800/60 text-zinc-300 hover:bg-zinc-700/60"
+                }`}
+                title={`${reactions
+                  .map((r) => r.username)
+                  .join(", ")}`}
+              >
+                <span>{emoji}</span>
+                <span className="font-medium">
+                  {reactions.length}
+                </span>
+              </button>
+            ))}
+          </div>
+        )}
+
+        {/* Action buttons - always visible on mobile, hover-only on desktop */}
+        <div
+          className={`relative mt-1 flex items-center gap-1 opacity-100 transition-opacity md:opacity-0 md:group-hover:opacity-100 ${
+            isOwn ? "justify-end" : ""
+          }`}
+        >
+          {/* Reply button */}
+          {!msg.deletedAt && (
+            <button
+              onClick={() => onReply(msg)}
+              className="rounded-lg p-1.5 text-zinc-500 transition-colors hover:bg-zinc-800 hover:text-purple-400"
+              title="Reply"
+            >
+              <CornerUpLeft className="h-3.5 w-3.5" />
+            </button>
+          )}
+          {/* Delete button — only on own messages that aren't already deleted */}
+          {isOwn && !msg.deletedAt && (
+            <button
+              onClick={() => onDelete(msg.id)}
+              className="rounded-lg p-1.5 text-zinc-500 transition-colors hover:bg-zinc-800 hover:text-red-400"
+              title="Delete message"
+            >
+              <Trash2 className="h-3.5 w-3.5" />
+            </button>
+          )}
+          {/* Reaction button - hold and slide on touch, click on desktop */}
+          <button
+            onPointerDown={handlePointerDown}
+            onPointerMove={handlePointerMove}
+            onPointerUp={handlePointerUp}
+            onPointerCancel={handlePointerCancel}
+            onClick={handleReactButtonClick}
+            className="relative touch-none select-none rounded-lg p-1.5 text-zinc-500 transition-colors hover:bg-zinc-800 hover:text-amber-400"
+            title="React"
+          >
+            <Smile className="h-3.5 w-3.5" />
+          </button>
+
+          {/* Reaction quick actions - appears above the buttons (Messenger-style) */}
+          {reactionMenuOpen && (
+            <div
+              ref={pickerRef}
+              className="absolute bottom-full mb-1.5 z-30 flex gap-1 rounded-full border border-zinc-700 bg-[#150d24] px-2 py-1.5 shadow-xl animate-reaction-picker transform-gpu"
+            >
+              {REACTION_EMOJIS.map((emoji, index) => (
+                <button
+                  key={emoji}
+                  data-emoji={emoji}
+                  onClick={() => {
+                    if (suppressClickRef.current) return;
+                    onReact(msg.id, emoji);
+                    setReactionMenuOpen(false);
+                  }}
+                  className={`rounded-full p-1 text-lg transition-transform duration-150 transform-gpu animate-emoji-pop ${
+                    highlightedEmoji === emoji
+                      ? "scale-150 bg-purple-600/30"
+                      : "hover:scale-125"
+                  }`}
+                  style={{ animationDelay: `${index * 40}ms` }}
+                  title={`React with ${emoji}`}
+                >
+                  {emoji}
+                </button>
+              ))}
+            </div>
+          )}
+        </div>
+
+        <p
+          className={`mt-1 text-[10px] text-zinc-600 ${
+            isOwn ? "text-right" : ""
+          }`}
+        >
+          {formattedTime}
+          {/* Read receipt — anonymous count of who has seen it */}
+          {isOwn && !msg.deletedAt && (msg.seenCount ?? 0) > 0 && (
+            <span className="ml-1.5 text-emerald-500">
+              Seen by {msg.seenCount}
+            </span>
+          )}
+        </p>
+      </div>
+    </div>
+  );
+}, messageBubbleAreEqual);
+
+
+

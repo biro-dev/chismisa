@@ -2,7 +2,7 @@
 
 import Pusher from "pusher-js";
 import type { Channel, PresenceChannel } from "pusher-js";
-import type { Message } from "@/components/dashboard";
+import type { Message } from "@/lib/types";
 
 // --- Payload types for realtime events ---
 
