@@ -97,10 +97,17 @@ export function subscribeToGroup(groupId: string): Channel | null {
 
   const channelName = `private-group-${groupId}`;
   const existing = channels.get(channelName);
-  if (existing) return existing;
 
-  const channel = instance.subscribe(channelName);
-  channels.set(channelName, channel);
+  // Reuse an existing channel (e.g. one the badge watcher already opened)
+  // instead of subscribing twice, but rebind the handlers so a freshly
+  // switched-into group gets the current handler closures. unbind() first
+  // to avoid stacking duplicate listeners.
+  const channel = existing ?? instance.subscribe(channelName);
+  if (!existing) {
+    channels.set(channelName, channel);
+  } else {
+    channel.unbind();
+  }
 
   channel.bind("new-message", (payload: NewMessagePayload) => {
     handlers.onNewMessage?.(payload.message);
@@ -115,7 +122,11 @@ export function subscribeToGroup(groupId: string): Channel | null {
   });
 
   channel.bind("message-edited", (payload: MessageEditedPayload) => {
-    handlers.onMessageEdited?.(payload.messageId, payload.content, payload.editedAt);
+    handlers.onMessageEdited?.(
+      payload.messageId,
+      payload.content,
+      payload.editedAt
+    );
   });
 
   channel.bind("user-typing", (payload: TypingPayload) => {
@@ -234,4 +245,3 @@ export async function sendTyping(groupId: string): Promise<void> {
     // non-critical — typing is best-effort
   }
 }
-

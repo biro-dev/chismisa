@@ -162,9 +162,8 @@ export const MessageBubble = memo(function MessageBubble({
         y >= rect.top - 12 &&
         y <= rect.bottom + 12;
       if (isInside) {
-        const emojiButtons = picker.querySelectorAll<HTMLButtonElement>(
-          "[data-emoji]"
-        );
+        const emojiButtons =
+          picker.querySelectorAll<HTMLButtonElement>("[data-emoji]");
         let found: string | null = null;
         for (const btn of emojiButtons) {
           const r = btn.getBoundingClientRect();
@@ -183,32 +182,29 @@ export const MessageBubble = memo(function MessageBubble({
     [reactionMenuOpen, clearPressTimer]
   );
 
-  const handlePointerUp = useCallback(
-    () => {
-      clearPressTimer();
-      startPosRef.current = null;
-      if (isDraggingRef.current) {
-        const emoji = highlightedEmojiRef.current;
-        if (emoji) {
-          onReact(msg.id, emoji);
-          // Haptic feedback when an emoji is selected on native
-          if (Capacitor.isNativePlatform()) {
-            Haptics.impact({ style: ImpactStyle.Medium }).catch(() => {});
-          }
+  const handlePointerUp = useCallback(() => {
+    clearPressTimer();
+    startPosRef.current = null;
+    if (isDraggingRef.current) {
+      const emoji = highlightedEmojiRef.current;
+      if (emoji) {
+        onReact(msg.id, emoji);
+        // Haptic feedback when an emoji is selected on native
+        if (Capacitor.isNativePlatform()) {
+          Haptics.impact({ style: ImpactStyle.Medium }).catch(() => {});
         }
-        isDraggingRef.current = false;
-        suppressClickRef.current = true;
-        setReactionMenuOpen(false);
-        setHighlightedEmoji(null);
-        highlightedEmojiRef.current = null;
-        // Reset after the click event has a chance to fire
-        requestAnimationFrame(() => {
-          suppressClickRef.current = false;
-        });
       }
-    },
-    [clearPressTimer, onReact, msg.id]
-  );
+      isDraggingRef.current = false;
+      suppressClickRef.current = true;
+      setReactionMenuOpen(false);
+      setHighlightedEmoji(null);
+      highlightedEmojiRef.current = null;
+      // Reset after the click event has a chance to fire
+      requestAnimationFrame(() => {
+        suppressClickRef.current = false;
+      });
+    }
+  }, [clearPressTimer, onReact, msg.id]);
 
   const handlePointerCancel = useCallback(() => {
     clearPressTimer();
@@ -254,10 +250,14 @@ export const MessageBubble = memo(function MessageBubble({
 
   return (
     <div
-      className={`group msg-bubble flex ${isOwn ? "justify-end" : "justify-start"}`}
+      className={`group msg-bubble flex ${
+        isOwn ? "justify-end" : "justify-start"
+      }`}
     >
       <div
-        className={`max-w-[85%] sm:max-w-[70%] ${isOwn ? "items-end" : "items-start"}`}
+        className={`max-w-[85%] sm:max-w-[70%] ${
+          isOwn ? "items-end" : "items-start"
+        }`}
       >
         <p
           className={`mb-1 text-xs font-medium ${
@@ -289,9 +289,7 @@ export const MessageBubble = memo(function MessageBubble({
                 <p className="font-medium">
                   Replying to {msg.replyTo.username}
                 </p>
-                <p className="truncate opacity-80">
-                  {msg.replyTo.content}
-                </p>
+                <p className="truncate opacity-80">{msg.replyTo.content}</p>
               </div>
             </div>
           )}
@@ -334,9 +332,7 @@ export const MessageBubble = memo(function MessageBubble({
               </div>
             </div>
           ) : (
-            <p className="whitespace-pre-wrap break-words">
-              {msg.content}
-            </p>
+            <p className="whitespace-pre-wrap break-words">{msg.content}</p>
           )}
         </div>
 
@@ -356,14 +352,10 @@ export const MessageBubble = memo(function MessageBubble({
                     ? "border-purple-500/50 bg-purple-600/20 text-purple-200"
                     : "border-zinc-700/60 bg-zinc-800/60 text-zinc-300 hover:bg-zinc-700/60"
                 }`}
-                title={`${reactions
-                  .map((r) => r.username)
-                  .join(", ")}`}
+                title={`${reactions.map((r) => r.username).join(", ")}`}
               >
                 <span>{emoji}</span>
-                <span className="font-medium">
-                  {reactions.length}
-                </span>
+                <span className="font-medium">{reactions.length}</span>
               </button>
             ))}
           </div>
@@ -468,7 +460,5 @@ export const MessageBubble = memo(function MessageBubble({
       </div>
     </div>
   );
-}, messageBubbleAreEqual);
-
-
-
+},
+messageBubbleAreEqual);

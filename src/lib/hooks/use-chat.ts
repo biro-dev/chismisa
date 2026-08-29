@@ -1,12 +1,6 @@
 "use client";
 
-import {
-  useCallback,
-  useEffect,
-  useRef,
-  useState,
-  useTransition,
-} from "react";
+import { useCallback, useEffect, useRef, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import type { Group, GroupDetails, Message } from "@/lib/types";
 import {
@@ -95,9 +89,9 @@ export function useChat({
     new Map()
   );
   const [onlineCount, setOnlineCount] = useState<number>(0);
-  const typingTimeoutsRef = useRef<
-    Map<string, ReturnType<typeof setTimeout>>
-  >(new Map());
+  const typingTimeoutsRef = useRef<Map<string, ReturnType<typeof setTimeout>>>(
+    new Map()
+  );
   // Debounce typing broadcasts so long messages don't fire one per keystroke
   const typingSentAtRef = useRef(0);
   const TYPING_DEBOUNCE_MS = 2000;
@@ -189,7 +183,8 @@ export function useChat({
       scrollRafRef.current = null;
       const el = scrollContainerRef.current;
       if (!el) return;
-      const distanceFromBottom = el.scrollHeight - el.scrollTop - el.clientHeight;
+      const distanceFromBottom =
+        el.scrollHeight - el.scrollTop - el.clientHeight;
       isNearBottomRef.current = distanceFromBottom < 100;
       setIsNearBottom(distanceFromBottom < 100);
       // Trigger loading older messages when scrolled near the top
@@ -203,7 +198,10 @@ export function useChat({
   const scrollToBottom = useCallback((smooth = true) => {
     const el = scrollContainerRef.current;
     if (el) {
-      el.scrollTo({ top: el.scrollHeight, behavior: smooth ? "smooth" : "auto" });
+      el.scrollTo({
+        top: el.scrollHeight,
+        behavior: smooth ? "smooth" : "auto",
+      });
     }
   }, []);
 
@@ -227,10 +225,17 @@ export function useChat({
           const data = await res.json();
           if (data.length > 0) {
             setMessages((prev) => {
-              const existingIds = new Set(prev.map((m) => m.id));
-              const newMsgs = data.filter((m: Message) => !existingIds.has(m.id));
-              if (newMsgs.length === 0) return prev;
-              const merged = [...prev, ...newMsgs].sort(
+              // Merge by id: replace stale local copies with the fresh
+              // versions (so edits/deletions propagate even via the 30s poll)
+              // and append genuinely new messages.
+              const freshMap = new Map(data.map((m: Message) => [m.id, m]));
+              const updated = prev.map((p) => freshMap.get(p.id) ?? p);
+              const newMsgs = data.filter(
+                (m: Message) => !prev.some((p) => p.id === m.id)
+              );
+              if (newMsgs.length === 0 && updated.length === prev.length)
+                return prev;
+              const merged = [...updated, ...newMsgs].sort(
                 (a, b) =>
                   new Date(a.createdAt).getTime() -
                   new Date(b.createdAt).getTime()
@@ -277,8 +282,7 @@ export function useChat({
           if (prev.some((m) => m.id === msg.id)) return prev;
           const merged = [...prev, msg].sort(
             (a, b) =>
-              new Date(a.createdAt).getTime() -
-              new Date(b.createdAt).getTime()
+              new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime()
           );
           lastMessageTimeRef.current = msg.createdAt;
           return merged;
@@ -302,7 +306,7 @@ export function useChat({
       },
       onReactionUpdated: (messageId, reactions) => {
         setMessages((prev) =>
-          prev.map((m) => m.id === messageId ? { ...m, reactions } : m)
+          prev.map((m) => (m.id === messageId ? { ...m, reactions } : m))
         );
       },
       onTyping: (typerUserId, typerUsername) => {
@@ -655,8 +659,7 @@ export function useChat({
               setMessages(data);
               if (data.length > 0) {
                 oldestMessageTimeRef.current = data[0].createdAt;
-                lastMessageTimeRef.current =
-                  data[data.length - 1].createdAt;
+                lastMessageTimeRef.current = data[data.length - 1].createdAt;
                 oldestMessageTimeByGroupRef.current.set(
                   groupId,
                   data[0].createdAt
@@ -684,10 +687,7 @@ export function useChat({
   // realtime event (or the 30s backup poll). Returns any error so the inline
   // editor in the bubble can keep itself open and show it.
   const handleEditMessage = useCallback(
-    async (
-      messageId: string,
-      content: string
-    ): Promise<{ error?: string }> => {
+    async (messageId: string, content: string): Promise<{ error?: string }> => {
       const trimmed = content.trim();
       if (!trimmed) return { error: "Message content is required." };
       try {
