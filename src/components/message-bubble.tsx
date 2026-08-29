@@ -1,12 +1,11 @@
 "use client";
 
 import { memo, useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { CornerUpLeft, Pencil, Smile, Trash2 } from "lucide-react";
+import { CornerUpLeft, Pencil, Plus, Search, Smile, Trash2, X } from "lucide-react";
 import { Capacitor } from "@capacitor/core";
 import { Haptics, ImpactStyle } from "@capacitor/haptics";
 import type { Message, MessageReaction } from "@/lib/types";
-
-const REACTION_EMOJIS = ["👍", "❤️", "😂", "🎉", "😮"];
+import { EMOJI_CATEGORIES, QUICK_EMOJIS, searchEmojis } from "@/lib/emoji-data";
 
 // Check if Haptics plugin is available
 const hapticsAvailable = Capacitor.isPluginAvailable("Haptics");
@@ -75,6 +74,10 @@ export const MessageBubble = memo(function MessageBubble({
 }: MessageBubbleProps) {
   const [reactionMenuOpen, setReactionMenuOpen] = useState(false);
   const [highlightedEmoji, setHighlightedEmoji] = useState<string | null>(null);
+  // Full emoji picker state
+  const [emojiPickerOpen, setEmojiPickerOpen] = useState(false);
+  const [emojiSearchQuery, setEmojiSearchQuery] = useState("");
+  const [activeEmojiCategory, setActiveEmojiCategory] = useState(0);
   // Inline edit state — the editor lives in the bubble so each message owns
   // its own open/closed state without any global tracking.
   const [isEditing, setIsEditing] = useState(false);
@@ -87,6 +90,48 @@ export const MessageBubble = memo(function MessageBubble({
   const highlightedEmojiRef = useRef<string | null>(null);
   const startPosRef = useRef<{ x: number; y: number } | null>(null);
   const pickerRef = useRef<HTMLDivElement>(null);
+  const emojiPickerRef = useRef<HTMLDivElement>(null);
+  const emojiSearchRef = useRef<HTMLInputElement>(null);
+
+  // Filter emojis based on search query
+  const filteredEmojis = useMemo(() => {
+    if (!emojiSearchQuery.trim()) return null;
+    return searchEmojis(emojiSearchQuery);
+  }, [emojiSearchQuery]);
+
+  // Close emoji picker when clicking outside
+  useEffect(() => {
+    function handleClickOutside(event: MouseEvent) {
+      if (
+        emojiPickerRef.current &&
+        !emojiPickerRef.current.contains(event.target as Node)
+      ) {
+        setEmojiPickerOpen(false);
+      }
+    }
+    if (emojiPickerOpen) {
+      document.addEventListener("mousedown", handleClickOutside);
+      return () =>
+        document.removeEventListener("mousedown", handleClickOutside);
+    }
+  }, [emojiPickerOpen]);
+
+  // Reset search when closing picker
+  useEffect(() => {
+    if (!emojiPickerOpen) {
+      setEmojiSearchQuery("");
+      setActiveEmojiCategory(0);
+    }
+  }, [emojiPickerOpen]);
+
+  const handleSelectEmoji = useCallback(
+    (emoji: string) => {
+      onReact(msg.id, emoji);
+      setEmojiPickerOpen(false);
+      setReactionMenuOpen(false);
+    },
+    [msg.id, onReact]
+  );
 
   // Memoized formatted timestamp — computed once per message
   const formattedTime = useMemo(
@@ -109,7 +154,7 @@ export const MessageBubble = memo(function MessageBubble({
     return Array.from(grouped.entries());
   }, [msg.reactions]);
 
-  // --- Messenger-style hold-and-slide reaction picker ---
+  // --- Messenger-style hold-and-slide reaction picker (quick reactions) ---
 
   const clearPressTimer = useCallback(() => {
     if (pressTimerRef.current) {
@@ -421,7 +466,7 @@ export const MessageBubble = memo(function MessageBubble({
               ref={pickerRef}
               className="absolute bottom-full mb-1.5 z-30 flex gap-1 rounded-full border border-zinc-700 bg-[#150d24] px-2 py-1.5 shadow-xl animate-reaction-picker transform-gpu"
             >
-              {REACTION_EMOJIS.map((emoji, index) => (
+              {QUICK_EMOJIS.slice(0, 6).map((emoji, index) => (
                 <button
                   key={emoji}
                   data-emoji={emoji}
@@ -441,9 +486,132 @@ export const MessageBubble = memo(function MessageBubble({
                   {emoji}
                 </button>
               ))}
+              {/* Open full emoji picker */}
+              <button
+                onClick={() => {
+                  setReactionMenuOpen(false);
+                  setEmojiPickerOpen(true);
+                }}
+                className="flex items-center justify-center rounded-full border border-dashed border-zinc-600 p-1 text-xs text-zinc-400 transition-colors hover:border-zinc-400 hover:text-zinc-200"
+                title="More emojis..."
+              >
+                <Plus className="h-4 w-4" />
+              </button>
             </div>
           )}
         </div>
+
+        {/* Full Emoji Picker Modal */}
+        {emojiPickerOpen && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
+            <div
+              ref={emojiPickerRef}
+              className="w-full max-w-sm rounded-2xl border border-zinc-700 bg-[#150d24] shadow-2xl"
+              onClick={(e) => e.stopPropagation()}
+            >
+              {/* Header */}
+              <div className="flex items-center justify-between border-b border-zinc-700 px-4 py-3">
+                <h3 className="font-semibold text-zinc-200">
+                  React with emoji
+                </h3>
+                <button
+                  onClick={() => setEmojiPickerOpen(false)}
+                  className="rounded-lg p-1 text-zinc-400 hover:bg-zinc-700 hover:text-zinc-200"
+                >
+                  <X className="h-5 w-5" />
+                </button>
+              </div>
+
+              {/* Search */}
+              <div className="px-4 py-3">
+                <div className="relative">
+                  <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-zinc-500" />
+                  <input
+                    ref={emojiSearchRef}
+                    type="text"
+                    placeholder="Search emoji..."
+                    value={emojiSearchQuery}
+                    onChange={(e) => setEmojiSearchQuery(e.target.value)}
+                    className="w-full rounded-lg border border-zinc-600 bg-zinc-800 py-2 pl-10 pr-4 text-sm text-zinc-200 placeholder-zinc-500 focus:border-purple-500 focus:outline-none"
+                  />
+                </div>
+              </div>
+
+              {/* Quick Emojis (hidden while searching) */}
+              {!emojiSearchQuery && (
+                <div className="px-4 pb-2">
+                  <div className="flex flex-wrap gap-1">
+                    {QUICK_EMOJIS.map((emoji) => (
+                      <button
+                        key={emoji}
+                        onClick={() => handleSelectEmoji(emoji)}
+                        className="rounded-lg p-2 text-xl transition-colors hover:bg-zinc-700"
+                      >
+                        {emoji}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {/* Category Tabs (hidden while searching) */}
+              {!emojiSearchQuery && (
+                <div className="flex gap-1 overflow-x-auto border-b border-zinc-700 px-4 pb-2">
+                  {EMOJI_CATEGORIES.map((category, index) => (
+                    <button
+                      key={category.name}
+                      onClick={() => setActiveEmojiCategory(index)}
+                      className={`flex shrink-0 items-center gap-1 rounded-lg px-3 py-1.5 text-sm transition-colors ${
+                        activeEmojiCategory === index
+                          ? "bg-purple-600 text-white"
+                          : "text-zinc-400 hover:bg-zinc-700 hover:text-zinc-200"
+                      }`}
+                    >
+                      <span>{category.icon}</span>
+                    </button>
+                  ))}
+                </div>
+              )}
+
+              {/* Emoji Grid */}
+              <div className="max-h-64 overflow-y-auto p-4">
+                {filteredEmojis ? (
+                  filteredEmojis.length > 0 ? (
+                    <div className="grid grid-cols-8 gap-1">
+                      {filteredEmojis.map((emoji) => (
+                        <button
+                          key={emoji}
+                          onClick={() => handleSelectEmoji(emoji)}
+                          className="rounded-lg p-2 text-xl transition-colors hover:bg-zinc-700"
+                        >
+                          {emoji}
+                        </button>
+                      ))}
+                    </div>
+                  ) : (
+                    <p className="py-8 text-center text-zinc-500">
+                      No emoji found for &quot;{emojiSearchQuery}&quot;
+                    </p>
+                  )
+                ) : (
+                  <div className="grid grid-cols-8 gap-1">
+                    {EMOJI_CATEGORIES[activeEmojiCategory]?.emojis.map(
+                      (emoji) => (
+                        <button
+                          key={emoji}
+                          onClick={() => handleSelectEmoji(emoji)}
+                          className="rounded-lg p-2 text-xl transition-colors hover:bg-zinc-700"
+                        >
+                          {emoji}
+                        </button>
+                      )
+                    )}
+                  </div>
+                )}
+              </div>
+            </div>
+          </div>
+        )}
 
         <p
           className={`mt-1 text-[10px] text-zinc-600 ${
