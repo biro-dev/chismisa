@@ -4,7 +4,10 @@ import { render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 
 vi.mock("@capacitor/core", () => ({
-  Capacitor: { isNativePlatform: () => false },
+  Capacitor: { 
+    isNativePlatform: () => false,
+    isPluginAvailable: () => false,
+  },
 }));
 vi.mock("@capacitor/haptics", () => ({
   Haptics: { impact: vi.fn().mockResolvedValue(undefined) },

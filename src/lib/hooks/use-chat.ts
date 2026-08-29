@@ -18,6 +18,8 @@ import {
   unsubscribeFromGroup,
 } from "@/lib/realtime";
 
+const POLL_CHANNEL_NAME = "chismisa-poll";
+
 type UseChatParams = {
   groups: Group[];
   activeGroup: GroupDetails | null;
@@ -83,6 +85,8 @@ export function useChat({
   const [messageInput, setMessageInput] = useState("");
   const [replyTo, setReplyTo] = useState<Message | null>(null);
   const [actionError, setActionError] = useState("");
+  // Track optimistic message IDs to avoid duplication when poll returns confirmed message
+  const optimisticMessageIdsRef = useRef<Set<string>>(new Set());
   // Real-time state
   // Map of userId → username for users currently typing (per-user timeouts)
   const [typingUsers, setTypingUsers] = useState<Map<string, string>>(
@@ -206,12 +210,14 @@ export function useChat({
   }, []);
 
   // Incremental polling — only fetches messages newer than the last known one.
-  // Pauses when the tab is hidden.
+  // Pauses when the tab is hidden. Uses BroadcastChannel to coordinate across tabs.
   useEffect(() => {
     const groupId = selectedGroupId;
     if (!groupId) return;
 
     let interval: ReturnType<typeof setInterval> | null = null;
+    let channel: BroadcastChannel | null = null;
+    let isLeader = false;
 
     const poll = async () => {
       if (document.hidden) return;
@@ -224,34 +230,45 @@ export function useChat({
         if (res.ok) {
           const data = await res.json();
           if (data.length > 0) {
-            setMessages((prev) => {
-              // Merge by id: replace stale local copies with the fresh
-              // versions (so edits/deletions propagate even via the 30s poll)
-              // and append genuinely new messages.
-              const freshMap = new Map(data.map((m: Message) => [m.id, m]));
-              const updated = prev.map((p) => freshMap.get(p.id) ?? p);
-              const newMsgs = data.filter(
-                (m: Message) => !prev.some((p) => p.id === m.id)
-              );
-              // Skip the re-render only when nothing actually changed: no new
-              // ids AND every existing message is still the same reference.
-              // (freshMap.get(p.id) ?? p) returns p unchanged iff the message
-              // wasn't in the payload, so ref-identity catches edits/deletions.
-              if (
-                newMsgs.length === 0 &&
-                updated.every((u, i) => u === prev[i])
-              )
-                return prev;
-              const merged = [...updated, ...newMsgs].sort(
-                (a, b) =>
-                  new Date(a.createdAt).getTime() -
-                  new Date(b.createdAt).getTime()
-              );
-              return merged.slice(-500);
-            });
-            // Update the latest timestamp for the next incremental poll
-            const last = data[data.length - 1];
-            if (last?.createdAt) lastMessageTimeRef.current = last.createdAt;
+            // Filter out any optimistic messages from the poll results
+            const serverMessages = data.filter(
+              (m: Message) => !optimisticMessageIdsRef.current.has(m.id)
+            );
+            if (serverMessages.length > 0) {
+              setMessages((prev) => {
+                // Merge by id: replace stale local copies with the fresh
+                // versions (so edits/deletions propagate even via the 30s poll)
+                // and append genuinely new messages.
+                const freshMap = new Map(serverMessages.map((m: Message) => [m.id, m]));
+                const updated = prev.map((p) => freshMap.get(p.id) ?? p);
+                const newMsgs = serverMessages.filter(
+                  (m: Message) => !prev.some((p) => p.id === m.id)
+                );
+                // Skip the re-render only when nothing actually changed: no new
+                // ids AND every existing message is still the same reference.
+                // (freshMap.get(p.id) ?? p) returns p unchanged iff the message
+                // wasn't in the payload, so ref-identity catches edits/deletions.
+                if (
+                  newMsgs.length === 0 &&
+                  updated.every((u, i) => u === prev[i])
+                )
+                  return prev;
+                const merged = [...updated, ...newMsgs].sort(
+                  (a, b) =>
+                    new Date(a.createdAt).getTime() -
+                    new Date(b.createdAt).getTime()
+                );
+                return merged.slice(-500);
+              });
+              // Update the latest timestamp for the next incremental poll
+              const last = serverMessages[serverMessages.length - 1];
+              if (last?.createdAt) lastMessageTimeRef.current = last.createdAt;
+              
+              // Broadcast new messages to other tabs
+              if (isLeader && channel && serverMessages.length > 0) {
+                channel.postMessage({ type: "new-messages", messages: serverMessages, groupId });
+              }
+            }
           }
         }
       } catch {
@@ -259,20 +276,67 @@ export function useChat({
       }
     };
 
+    // BroadcastChannel for cross-tab coordination
+    try {
+      channel = new BroadcastChannel(POLL_CHANNEL_NAME);
+      channel.onmessage = (event) => {
+        if (event.data.type === "new-messages" && event.data.groupId === groupId) {
+          // Non-leader tabs receive new messages from the leader
+          const newMsgs = event.data.messages;
+          if (newMsgs.length > 0) {
+            setMessages((prev) => {
+              const freshMap = new Map(newMsgs.map((m: Message) => [m.id, m]));
+              const updated = prev.map((p) => freshMap.get(p.id) ?? p);
+              const merged = [...updated, ...newMsgs].sort(
+                (a, b) =>
+                  new Date(a.createdAt).getTime() -
+                  new Date(b.createdAt).getTime()
+              );
+              return merged.slice(-500);
+            });
+            const last = newMsgs[newMsgs.length - 1];
+            if (last?.createdAt) lastMessageTimeRef.current = last.createdAt;
+          }
+        } else if (event.data.type === "leader-elected" && event.data.groupId === groupId) {
+          // Another tab became leader, stop our interval
+          if (interval && isLeader) {
+            clearInterval(interval);
+            interval = null;
+            isLeader = false;
+          }
+        }
+      };
+    } catch {
+      // BroadcastChannel not available (e.g. Safari private mode), fall back to per-tab polling
+      channel = null;
+    }
+
+    // Leader election: first tab to connect becomes leader
+    if (channel) {
+      isLeader = true;
+      channel.postMessage({ type: "leader-elected", groupId });
+    }
+
     // Initial fetch (no `since` — gets the full history)
     poll();
     // Slow backup poll — real-time via Pusher is the primary path.
-    interval = setInterval(poll, 30000);
+    // Only the leader polls.
+    if (isLeader || !channel) {
+      interval = setInterval(poll, 30000);
+    }
 
     // Resume polling immediately when the tab becomes visible again
     const onVisibility = () => {
-      if (!document.hidden) poll();
+      if (!document.hidden && (isLeader || !channel)) poll();
     };
     document.addEventListener("visibilitychange", onVisibility);
 
     return () => {
       if (interval) clearInterval(interval);
       document.removeEventListener("visibilitychange", onVisibility);
+      if (channel) {
+        channel.close();
+      }
     };
   }, [selectedGroupId]);
 
@@ -444,8 +508,9 @@ export function useChat({
 
     const content = messageInput.trim();
     const replyToMsg = replyTo;
+    const optimisticId = `temp-${Date.now()}-${Math.random().toString(36).slice(2)}`;
     const optimisticMsg: Message = {
-      id: `temp-${Date.now()}`,
+      id: optimisticId,
       content,
       userId,
       username: "You",
@@ -459,6 +524,9 @@ export function useChat({
         : null,
       reactions: [],
     };
+
+    // Track optimistic message ID
+    optimisticMessageIdsRef.current.add(optimisticId);
 
     // Optimistic append — instant feedback
     setMessages((prev) => [...prev, optimisticMsg]);
@@ -481,21 +549,24 @@ export function useChat({
         // (e.g. if the poll fetched the confirmed message before this
         // action resolved), then swap the optimistic entry in.
         const confirmed = result.message as Message;
+        optimisticMessageIdsRef.current.delete(optimisticId);
         setMessages((prev) => {
           const withoutPolledCopy = prev.filter((m) => m.id !== confirmed.id);
           return withoutPolledCopy.map((m) =>
-            m.id === optimisticMsg.id ? confirmed : m
+            m.id === optimisticId ? confirmed : m
           );
         });
         lastMessageTimeRef.current = confirmed.createdAt;
       } else {
         // Rollback on failure
-        setMessages((prev) => prev.filter((m) => m.id !== optimisticMsg.id));
+        optimisticMessageIdsRef.current.delete(optimisticId);
+        setMessages((prev) => prev.filter((m) => m.id !== optimisticId));
         setActionError(result.error || "Failed to send message.");
       }
     } catch {
       // Rollback on error
-      setMessages((prev) => prev.filter((m) => m.id !== optimisticMsg.id));
+      optimisticMessageIdsRef.current.delete(optimisticId);
+      setMessages((prev) => prev.filter((m) => m.id !== optimisticId));
       setActionError("Failed to send message.");
     }
   };
@@ -538,24 +609,40 @@ export function useChat({
         const result = await reactToMessageAction(messageId, emoji);
         if (!result.success) {
           setActionError(result.error || "Failed to add reaction.");
-          // Refetch to rollback to server state
-          const res = await fetch(`/api/messages?groupId=${groupId}`, {
-            cache: "no-store",
-          });
+          // Refetch only the affected message to rollback to server state
+          const res = await fetch(
+            `/api/messages?groupId=${groupId}&since=${encodeURIComponent(
+              new Date(Date.now() - 1000).toISOString()
+            )}&limit=50`,
+            { cache: "no-store" }
+          );
           if (res.ok) {
             const data = await res.json();
-            setMessages(data);
+            const serverMsg = data.find((m: Message) => m.id === messageId);
+            if (serverMsg) {
+              setMessages((prev) =>
+                prev.map((m) => (m.id === messageId ? serverMsg : m))
+              );
+            }
           }
         }
       } catch {
         setActionError("Failed to add reaction.");
-        // Refetch to rollback to server state
-        const res = await fetch(`/api/messages?groupId=${groupId}`, {
-          cache: "no-store",
-        });
+        // Refetch only the affected message to rollback to server state
+        const res = await fetch(
+          `/api/messages?groupId=${groupId}&since=${encodeURIComponent(
+            new Date(Date.now() - 1000).toISOString()
+          )}&limit=50`,
+          { cache: "no-store" }
+        );
         if (res.ok) {
           const data = await res.json();
-          setMessages(data);
+          const serverMsg = data.find((m: Message) => m.id === messageId);
+          if (serverMsg) {
+            setMessages((prev) =>
+              prev.map((m) => (m.id === messageId ? serverMsg : m))
+            );
+          }
         }
       }
     },
@@ -581,13 +668,21 @@ export function useChat({
         const result = await deleteMessageAction(messageId);
         if (!result.success) {
           setActionError(result.error || "Failed to delete message.");
-          // Refetch to rollback
-          const res = await fetch(`/api/messages?groupId=${groupId}`, {
-            cache: "no-store",
-          });
+          // Refetch only the affected message to rollback
+          const res = await fetch(
+            `/api/messages?groupId=${groupId}&since=${encodeURIComponent(
+              new Date(Date.now() - 1000).toISOString()
+            )}&limit=50`,
+            { cache: "no-store" }
+          );
           if (res.ok) {
             const data = await res.json();
-            setMessages(data);
+            const serverMsg = data.find((m: Message) => m.id === messageId);
+            if (serverMsg) {
+              setMessages((prev) =>
+                prev.map((m) => (m.id === messageId ? serverMsg : m))
+              );
+            }
           }
         }
       } catch {

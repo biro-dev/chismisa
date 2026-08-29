@@ -56,7 +56,16 @@ export type RealtimeHandlers = {
 const handlers: RealtimeHandlers = {};
 
 let pusher: Pusher | null = null;
-const channels = new Map<string, Channel>();
+
+// Channel subscription tracking with reference counting
+interface ChannelState {
+  channel: Channel;
+  refCount: number;
+  badgeHandlerBound: boolean;
+  activeHandlersBound: boolean;
+}
+
+const channelStates = new Map<string, ChannelState>();
 
 /**
  * Initialize the Pusher client. Only runs in the browser.
@@ -88,27 +97,9 @@ export function setRealtimeHandlers(h: RealtimeHandlers): void {
 }
 
 /**
- * Subscribe to a group's private channel.
- * Binds event handlers for messages, reactions, deletions, and typing.
+ * Bind active group handlers to a channel.
  */
-export function subscribeToGroup(groupId: string): Channel | null {
-  const instance = getPusher();
-  if (!instance) return null;
-
-  const channelName = `private-group-${groupId}`;
-  const existing = channels.get(channelName);
-
-  // Reuse an existing channel (e.g. one the badge watcher already opened)
-  // instead of subscribing twice, but rebind the handlers so a freshly
-  // switched-into group gets the current handler closures. unbind() first
-  // to avoid stacking duplicate listeners.
-  const channel = existing ?? instance.subscribe(channelName);
-  if (!existing) {
-    channels.set(channelName, channel);
-  } else {
-    channel.unbind();
-  }
-
+function bindActiveHandlers(channel: Channel): void {
   channel.bind("new-message", (payload: NewMessagePayload) => {
     handlers.onNewMessage?.(payload.message);
   });
@@ -132,24 +123,83 @@ export function subscribeToGroup(groupId: string): Channel | null {
   channel.bind("user-typing", (payload: TypingPayload) => {
     handlers.onTyping?.(payload.userId, payload.username);
   });
+}
 
-  return channel;
+/**
+ * Unbind active group handlers from a channel.
+ */
+function unbindActiveHandlers(channel: Channel): void {
+  channel.unbind("new-message");
+  channel.unbind("reaction-updated");
+  channel.unbind("message-deleted");
+  channel.unbind("message-edited");
+  channel.unbind("user-typing");
+}
+
+/**
+ * Unbind badge handler from a channel.
+ */
+function unbindBadgeHandler(channel: Channel): void {
+  channel.unbind("new-message");
+}
+
+/**
+ * Subscribe to a group's private channel for active group events.
+ * Uses reference counting to share the channel with badge watcher.
+ */
+export function subscribeToGroup(groupId: string): Channel | null {
+  const instance = getPusher();
+  if (!instance) return null;
+
+  const channelName = `private-group-${groupId}`;
+  let state = channelStates.get(channelName);
+
+  if (!state) {
+    const channel = instance.subscribe(channelName);
+    state = {
+      channel,
+      refCount: 0,
+      badgeHandlerBound: false,
+      activeHandlersBound: false,
+    };
+    channelStates.set(channelName, state);
+  }
+
+  state.refCount += 1;
+
+  // Bind active handlers if not already bound
+  if (!state.activeHandlersBound) {
+    bindActiveHandlers(state.channel);
+    state.activeHandlersBound = true;
+  }
+
+  return state.channel;
 }
 
 /**
  * Subscribe to a group's presence channel for online status.
- * Calls onPresenceChange with the current member count.
  */
 export function subscribeToPresence(groupId: string): PresenceChannel | null {
   const instance = getPusher();
   if (!instance) return null;
 
   const channelName = `presence-group-${groupId}`;
-  const existing = channels.get(channelName);
-  if (existing) return existing as PresenceChannel;
+  let state = channelStates.get(channelName);
 
-  const presence = instance.subscribe(channelName) as PresenceChannel;
-  channels.set(channelName, presence);
+  if (!state) {
+    const presence = instance.subscribe(channelName) as PresenceChannel;
+    state = {
+      channel: presence,
+      refCount: 0,
+      badgeHandlerBound: false,
+      activeHandlersBound: false,
+    };
+    channelStates.set(channelName, state);
+  }
+
+  state.refCount += 1;
+
+  const presence = state.channel as PresenceChannel;
 
   const updateCount = () => {
     handlers.onPresenceChange?.(presence.members.count);
@@ -162,45 +212,39 @@ export function subscribeToPresence(groupId: string): PresenceChannel | null {
   return presence;
 }
 
-/** Unsubscribe from both private and presence channels for a group. */
+/**
+ * Unsubscribe from a group's private channel.
+ * Decrements ref count; only actually unsubscribes when count reaches 0.
+ */
 export function unsubscribeFromGroup(groupId: string): void {
   if (!pusher) return;
 
   const name = `private-group-${groupId}`;
-  // If the channel is also watched for unread badges, keep it alive — just
-  // drop the active-group handlers and rebind the badge listener.
-  if (badgeWatchedChannels.has(name)) {
-    const channel = channels.get(name);
-    if (channel) {
-      channel.unbind();
-      channel.bind("new-message", () => badgeHandler?.(groupId));
+  const state = channelStates.get(name);
+  if (!state) return;
+
+  state.refCount -= 1;
+
+  if (state.refCount <= 0) {
+    // No more references, clean up
+    unbindActiveHandlers(state.channel);
+    if (state.badgeHandlerBound) {
+      unbindBadgeHandler(state.channel);
     }
-    return;
-  }
-  if (channels.has(name)) {
     pusher.unsubscribe(name);
-    channels.delete(name);
+    channelStates.delete(name);
+  } else {
+    // Still have badge watcher, just unbind active handlers
+    if (state.activeHandlersBound) {
+      unbindActiveHandlers(state.channel);
+      state.activeHandlersBound = false;
+    }
   }
-}
-
-// --- Unread badge watching ---
-// Subscribes to every group the user belongs to (not just the active one) so
-// the sidebar's unread badges update instantly via real-time instead of only
-// on the 30s /api/groups poll. Channels created here are kept alive when the
-// user switches groups — only the active-group handlers are rebound.
-
-const badgeWatchedChannels = new Set<string>();
-let badgeHandler: ((groupId: string) => void) | null = null;
-
-/** Register the callback that fires when a watched group receives a message. */
-export function setBadgeHandler(fn: (groupId: string) => void): void {
-  badgeHandler = fn;
 }
 
 /**
  * Subscribe to all the given groups' private channels for badge updates.
- * Idempotent — already-subscribed channels (e.g. the active group's) are
- * reused and only get the badge binding added.
+ * Uses reference counting to share channels with active group subscription.
  */
 export function watchGroups(groupIds: string[]): void {
   const instance = getPusher();
@@ -208,27 +252,55 @@ export function watchGroups(groupIds: string[]): void {
 
   for (const groupId of groupIds) {
     const name = `private-group-${groupId}`;
-    if (badgeWatchedChannels.has(name)) continue;
+    let state = channelStates.get(name);
 
-    let channel = channels.get(name);
-    if (!channel) {
-      channel = instance.subscribe(name);
-      channels.set(name, channel);
+    if (!state) {
+      const channel = instance.subscribe(name);
+      state = {
+        channel,
+        refCount: 0,
+        badgeHandlerBound: false,
+        activeHandlersBound: false,
+      };
+      channelStates.set(name, state);
     }
-    badgeWatchedChannels.add(name);
-    channel.bind("new-message", () => badgeHandler?.(groupId));
+
+    state.refCount += 1;
+
+    // Bind badge handler if not already bound
+    if (!state.badgeHandlerBound) {
+      // Use a wrapper that calls the external badgeHandler
+      const handler = () => {
+        (window as unknown as { __badgeHandler?: ((groupId: string) => void) | null }).__badgeHandler?.(groupId);
+      };
+      state.channel.bind("new-message", handler);
+      state.badgeHandlerBound = true;
+    }
   }
+}
+
+/** Register the callback that fires when a watched group receives a message. */
+export function setBadgeHandler(fn: (groupId: string) => void): void {
+  (window as unknown as { __badgeHandler?: ((groupId: string) => void) | null }).__badgeHandler = fn;
 }
 
 /** Clean up all channels and disconnect (call on logout / page unload). */
 export function disconnectRealtime(): void {
   if (pusher) {
+    for (const [name, state] of channelStates) {
+      if (state.activeHandlersBound) {
+        unbindActiveHandlers(state.channel);
+      }
+      if (state.badgeHandlerBound) {
+        unbindBadgeHandler(state.channel);
+      }
+      pusher.unsubscribe(name);
+    }
     pusher.disconnect();
     pusher = null;
   }
-  channels.clear();
-  badgeWatchedChannels.clear();
-  badgeHandler = null;
+  channelStates.clear();
+  (window as unknown as { __badgeHandler?: ((groupId: string) => void) | null }).__badgeHandler = null;
 }
 
 /** Send a typing event via the REST API (debounced by the caller). */

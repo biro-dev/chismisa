@@ -10,7 +10,7 @@ export async function GET() {
   }
 
   // Polled every ~30s from the dashboard for unread badges.
-  const limited = checkRateLimit(`groups:${session.userId}`, 120);
+  const limited = await checkRateLimit(`groups:${session.userId}`, 120);
   if (limited) return limited;
 
   const memberships = await db.groupMember.findMany({

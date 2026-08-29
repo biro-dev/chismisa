@@ -57,9 +57,9 @@ describe("loginAction", () => {
     expect(dbMock.user.findUnique).not.toHaveBeenCalled();
   });
 
-  it("rejects passwords shorter than 4 characters", async () => {
+  it("rejects passwords shorter than 8 characters", async () => {
     expect(await loginAction(undefined, makeForm("chismosa", "abc"))).toEqual({
-      error: "Password must be at least 4 characters.",
+      error: "Password must be at least 8 characters.",
     });
   });
 
@@ -68,7 +68,7 @@ describe("loginAction", () => {
 
     const result = await loginAction(undefined, makeForm("newbie", "short"));
     expect(result).toEqual({
-      error: "New accounts require a password with at least 8 characters.",
+      error: "Password must be at least 8 characters.",
     });
     expect(dbMock.user.create).not.toHaveBeenCalled();
     expect(sessionMock.createSession).not.toHaveBeenCalled();
@@ -113,13 +113,14 @@ describe("loginAction", () => {
     expect(sessionMock.createSession).toHaveBeenCalledWith("user_1", "chismosa");
   });
 
-  it("lets an existing user keep a short password (< 8 chars)", async () => {
-    // Existing users aren't locked out by the newer 8-char registration rule
+  it("rejects short passwords for existing users too (min 8 chars)", async () => {
     existingUser.password = await bcrypt.hash("abc1", 10);
     dbMock.user.findUnique.mockResolvedValue({ ...existingUser });
 
     const result = await loginAction(undefined, makeForm("chismosa", "abc1"));
-    expect(result).toEqual({ success: true });
+    expect(result).toEqual({
+      error: "Password must be at least 8 characters.",
+    });
   });
 
   it("handles the P2002 registration race: correct password wins", async () => {

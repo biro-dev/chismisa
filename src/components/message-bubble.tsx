@@ -8,6 +8,15 @@ import type { Message, MessageReaction } from "@/lib/types";
 
 const REACTION_EMOJIS = ["👍", "❤️", "😂", "🎉", "😮"];
 
+// Check if Haptics plugin is available
+const hapticsAvailable = Capacitor.isPluginAvailable("Haptics");
+
+function triggerHaptic(style: ImpactStyle) {
+  if (hapticsAvailable) {
+    Haptics.impact({ style }).catch(() => {});
+  }
+}
+
 // Deep-compare reactions to avoid re-rendering bubbles when data didn't change
 const areReactionsEqual = (a: MessageReaction[], b: MessageReaction[]) => {
   if (a.length !== b.length) return false;
@@ -120,16 +129,14 @@ export const MessageBubble = memo(function MessageBubble({
       startPosRef.current = { x: e.clientX, y: e.clientY };
       // Capture pointer so we keep receiving move/up events even off the button
       e.currentTarget.setPointerCapture(e.pointerId);
-      // Long-press (~200ms) opens the picker and starts drag tracking
-      pressTimerRef.current = setTimeout(() => {
-        isDraggingRef.current = true;
-        setReactionMenuOpen(true);
-        setHighlightedEmoji(null);
-        // Light haptic feedback on native (Capacitor) platforms
-        if (Capacitor.isNativePlatform()) {
-          Haptics.impact({ style: ImpactStyle.Light }).catch(() => {});
-        }
-      }, 200);
+// Long-press (~200ms) opens the picker and starts drag tracking
+        pressTimerRef.current = setTimeout(() => {
+          isDraggingRef.current = true;
+          setReactionMenuOpen(true);
+          setHighlightedEmoji(null);
+          // Light haptic feedback on native (Capacitor) platforms
+          triggerHaptic(ImpactStyle.Light);
+        }, 200);
     },
     []
   );
@@ -190,9 +197,7 @@ export const MessageBubble = memo(function MessageBubble({
       if (emoji) {
         onReact(msg.id, emoji);
         // Haptic feedback when an emoji is selected on native
-        if (Capacitor.isNativePlatform()) {
-          Haptics.impact({ style: ImpactStyle.Medium }).catch(() => {});
-        }
+        triggerHaptic(ImpactStyle.Medium);
       }
       isDraggingRef.current = false;
       suppressClickRef.current = true;

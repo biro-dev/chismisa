@@ -6,13 +6,9 @@
 export function getEncodedSessionKey(): Uint8Array {
   const secret = process.env.SESSION_SECRET;
   if (!secret) {
-    if (process.env.NODE_ENV === "production") {
-      throw new Error(
-        "SESSION_SECRET environment variable is required in production."
-      );
-    }
-    // Development-only fallback. Never used in production — see above.
-    return new TextEncoder().encode("chismisa-dev-secret");
+    throw new Error(
+      "SESSION_SECRET environment variable is required."
+    );
   }
   return new TextEncoder().encode(secret);
 }

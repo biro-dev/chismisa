@@ -14,7 +14,7 @@ export async function POST(request: NextRequest) {
   }
 
   // Throttle typing broadcasts (~2/s is plenty while typing)
-  const limited = checkRateLimit(`typing:${session.userId}`, 60);
+  const limited = await checkRateLimit(`typing:${session.userId}`, 60);
   if (limited) return limited;
 
   try {

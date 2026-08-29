@@ -10,7 +10,7 @@ export async function GET(request: NextRequest) {
   }
 
   // Polling every ~2s plus history loads — allow a generous per-user budget
-  const limited = checkRateLimit(`messages:${session.userId}`, 240);
+  const limited = await checkRateLimit(`messages:${session.userId}`, 240);
   if (limited) return limited;
 
   const groupId = request.nextUrl.searchParams.get("groupId");
@@ -22,7 +22,8 @@ export async function GET(request: NextRequest) {
   const since = request.nextUrl.searchParams.get("since");
   // Optional: fetch messages older than this timestamp (infinite scroll up)
   const before = request.nextUrl.searchParams.get("before");
-  // Optional: page size (default 50, max 200)
+  // Optional: page size (default 50, max 200) — messages load 50 at a time,
+  // with infinite scroll-up (the client fetches older pages on demand)
   const limitParam = request.nextUrl.searchParams.get("limit");
   const limit = Math.min(
     Math.max(parseInt(limitParam || "50", 10) || 50, 1),

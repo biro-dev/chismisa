@@ -103,7 +103,7 @@ Vercel will automatically run `npm install` (which runs `prisma generate`) and `
 
 - 🔐 **Auto-register login** — just pick a username and password
 - 👥 **Group chat** — create or join groups with invite codes (shareable `/join/{code}` links)
-- 💬 **Real-time messaging** — Pusher channels with a 30s polling fallback; 200 latest messages per group
+- 💬 **Real-time messaging** — Pusher channels with a 30s polling fallback; 50 messages loaded per page with infinite scroll-up (max 200/page)
 - ✏️ **Message editing** — edit your own messages inline; updates broadcast in real time with an "(edited)" marker
 - ↩️ **Replies & reactions** — threaded quoting and per-user emoji reactions
 - ✅ **Read receipts & unread badges** — per-group unread counts, updated instantly over real-time

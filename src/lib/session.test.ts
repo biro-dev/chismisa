@@ -75,7 +75,7 @@ describe("session (lib/session.ts)", () => {
 
     vi.resetModules();
     await expect(import("@/lib/session")).rejects.toThrow(
-      "SESSION_SECRET environment variable is required in production."
+      "SESSION_SECRET environment variable is required."
     );
 
     vi.unstubAllEnvs();

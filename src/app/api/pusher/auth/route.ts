@@ -12,7 +12,7 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 
-  const limited = checkRateLimit(`pusher-auth:${session.userId}`, 60);
+  const limited = await checkRateLimit(`pusher-auth:${session.userId}`, 60);
   if (limited) return limited;
 
   const pusher = getPusherServer();
