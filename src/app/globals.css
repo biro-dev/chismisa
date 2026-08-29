@@ -214,6 +214,21 @@ body {
   contain: content;
 }
 
+/* Highlight flash for a message jumped to via search results */
+@keyframes messageHighlight {
+  0%, 60% {
+    background-color: rgba(168, 85, 247, 0.25);
+    border-radius: 12px;
+  }
+  100% {
+    background-color: transparent;
+  }
+}
+
+.search-highlight {
+  animation: messageHighlight 2s ease-out;
+}
+
 /* Safe area insets for notched phones (Capacitor native app) */
 .safe-top {
   padding-top: env(safe-area-inset-top);

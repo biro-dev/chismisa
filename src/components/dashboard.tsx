@@ -17,6 +17,7 @@ import {
   LogOut,
   Menu,
   MessageSquare,
+  Search,
   Send,
   Trash2,
   X,
@@ -24,6 +25,7 @@ import {
 import { GroupSidebar } from "@/components/group-sidebar";
 import { MessageBubble } from "@/components/message-bubble";
 import { Modal } from "@/components/modal";
+import { SearchModal } from "@/components/search-modal";
 import {
   setBadgeHandler,
   watchGroups,
@@ -102,6 +104,7 @@ export function Dashboard({
   const [showCreateModal, setShowCreateModal] = useState(false);
   const [showJoinModal, setShowJoinModal] = useState(false);
   const [showInviteModal, setShowInviteModal] = useState(false);
+  const [showSearchModal, setShowSearchModal] = useState(false);
   // Confirmation modal for leaving/deleting a group
   const [confirmModal, setConfirmModal] = useState<{
     type: "leave" | "delete";
@@ -257,6 +260,31 @@ export function Dashboard({
     }
   };
 
+  // Jump the chat view to a specific message (from search results): scrolls
+  // it into view inside the message container and flashes a highlight.
+  const jumpToMessage = (messageId: string) => {
+    setShowSearchModal(false);
+    // Let the modal unmount before scrolling so layout is settled
+    requestAnimationFrame(() => {
+      const container = scrollContainerRef.current;
+      const target = container?.querySelector(
+        `[data-message-id="${messageId}"]`
+      );
+      if (!container || !target) {
+        // Message may not be loaded (older than the loaded pages) — inform the
+        // user instead of silently doing nothing.
+        showToast("Message is outside the loaded history", "error");
+        return;
+      }
+      target.scrollIntoView({ behavior: "smooth", block: "center" });
+      target.classList.remove("search-highlight");
+      // Force a reflow so re-triggering the animation works on repeat jumps
+      void (target as HTMLElement).offsetWidth;
+      target.classList.add("search-highlight");
+      setTimeout(() => target.classList.remove("search-highlight"), 2200);
+    });
+  };
+
   // Handle leave/delete group confirmation — the actual removal from local
   // state (per-group caches + switching to another group if needed) is done
   // by the chat hook via removeGroupFromState.
@@ -367,6 +395,13 @@ export function Dashboard({
                 </div>
               </div>
               <div className="flex items-center gap-2">
+                <button
+                  onClick={() => setShowSearchModal(true)}
+                  className="rounded-lg p-2 text-zinc-400 transition-colors hover:bg-zinc-800 hover:text-zinc-200"
+                  title="Search messages"
+                >
+                  <Search className="h-4 w-4" />
+                </button>
                 {selectedGroup.isOwner ? (
                   <>
                     <button
@@ -637,6 +672,15 @@ export function Dashboard({
             </button>
           </form>
         </Modal>
+      )}
+
+      {/* Search Messages Modal */}
+      {showSearchModal && selectedGroup && (
+        <SearchModal
+          groupId={selectedGroup.id}
+          onClose={() => setShowSearchModal(false)}
+          onJumpToMessage={jumpToMessage}
+        />
       )}
 
       {/* Invite Code Modal (owner only) */}

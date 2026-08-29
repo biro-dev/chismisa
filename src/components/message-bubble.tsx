@@ -300,6 +300,7 @@ export const MessageBubble = memo(function MessageBubble({
 
   return (
     <div
+      data-message-id={msg.id}
       className={`group msg-bubble flex ${
         isOwn ? "justify-end" : "justify-start"
       }`}
