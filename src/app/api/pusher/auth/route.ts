@@ -43,9 +43,31 @@ export async function POST(request: NextRequest) {
     }
 
     // Only allow subscription to channels for groups the user is a member of.
-    // Channel format: private-group-{groupId} or presence-group-{groupId}
+    // Channel format: private-group-{groupId}, presence-group-{groupId}, or
+    // private-dm-{conversationId} for direct messages.
     const privateMatch = channel.match(/^private-group-(.+)$/);
     const presenceMatch = channel.match(/^presence-group-(.+)$/);
+    const dmMatch = channel.match(/^private-dm-(.+)$/);
+
+    if (dmMatch) {
+      // DM channels: verify the user is a member of the conversation
+      const conversationId = dmMatch[1];
+      const member = await db.conversationMember.findUnique({
+        where: {
+          conversationId_userId: {
+            conversationId,
+            userId: session.userId,
+          },
+        },
+        select: { id: true },
+      });
+      if (!member) {
+        return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+      }
+      return NextResponse.json(
+        pusher.authorizeChannel(socketId, channel)
+      );
+    }
 
     const groupId = (privateMatch || presenceMatch)?.[1];
     if (!groupId) {

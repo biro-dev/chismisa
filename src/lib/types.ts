@@ -51,3 +51,17 @@ export type DashboardProps = {
   activeGroup: GroupDetails | null;
   messages: Message[];
 };
+
+// ─── Direct messages ─────────────────────────────────────────────────────────
+
+/** A 1-on-1 conversation entry for the sidebar list. */
+export type Conversation = {
+  id: string;
+  otherUser: { id: string; username: string };
+  /** Last message preview (null if the conversation has no messages yet). */
+  lastMessage: { content: string; createdAt: string; senderId: string } | null;
+  unreadCount: number;
+};
+
+/** Direct message — same shape as group Message so MessageBubble can render it. */
+export type DirectMessage = Message;

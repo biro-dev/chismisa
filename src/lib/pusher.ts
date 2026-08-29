@@ -33,6 +33,28 @@ export function groupChannel(groupId: string): string {
   return `private-group-${groupId}`;
 }
 
+// Direct-message channel helper (same auth pattern as group channels)
+export function dmChannel(conversationId: string): string {
+  return `private-dm-${conversationId}`;
+}
+
+// Trigger an event on a DM channel (no-op if Pusher isn't configured)
+export async function triggerDmEvent(
+  conversationId: string,
+  event: string,
+  data: unknown
+): Promise<void> {
+  const pusher = getPusherServer();
+  if (!pusher) return;
+
+  try {
+    await pusher.trigger(dmChannel(conversationId), event, data);
+  } catch (err) {
+    // Non-critical — polling is the fallback
+    console.error(`Pusher DM trigger error (${event}):`, err);
+  }
+}
+
 // Trigger an event on a group channel (no-op if Pusher isn't configured)
 export async function triggerGroupEvent(
   groupId: string,

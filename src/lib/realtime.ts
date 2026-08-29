@@ -300,6 +300,10 @@ export function disconnectRealtime(): void {
     pusher = null;
   }
   channelStates.clear();
+  for (const [, state] of dmChannelStates) {
+    if (state.handlersBound) unbindDmHandlers(state.channel);
+  }
+  dmChannelStates.clear();
   (window as unknown as { __badgeHandler?: ((groupId: string) => void) | null }).__badgeHandler = null;
 }
 
@@ -316,4 +320,91 @@ export async function sendTyping(groupId: string): Promise<void> {
   } catch {
     // non-critical — typing is best-effort
   }
+}
+
+// ─── Direct messages ─────────────────────────────────────────────────────────
+
+export type DmRealtimeHandlers = {
+  onNewDmMessage?: (message: Message) => void;
+  onDmMessageDeleted?: (messageId: string) => void;
+  onDmMessageEdited?: (
+    messageId: string,
+    content: string,
+    editedAt: string | null
+  ) => void;
+  onDmReactionUpdated?: (
+    messageId: string,
+    reactions: ReactionUpdatedPayload["reactions"]
+  ) => void;
+};
+
+const dmHandlers: DmRealtimeHandlers = {};
+
+interface DmChannelState {
+  channel: Channel;
+  handlersBound: boolean;
+}
+
+const dmChannelStates = new Map<string, DmChannelState>();
+
+/** Register DM handlers (called once from the DmView/Dashboard). */
+export function setDmRealtimeHandlers(h: DmRealtimeHandlers): void {
+  Object.assign(dmHandlers, h);
+}
+
+function bindDmHandlers(channel: Channel): void {
+  channel.bind("new-dm-message", (payload: NewMessagePayload) => {
+    dmHandlers.onNewDmMessage?.(payload.message);
+  });
+  channel.bind("dm-deleted", (payload: MessageDeletedPayload) => {
+    dmHandlers.onDmMessageDeleted?.(payload.messageId);
+  });
+  channel.bind("dm-edited", (payload: MessageEditedPayload) => {
+    dmHandlers.onDmMessageEdited?.(
+      payload.messageId,
+      payload.content,
+      payload.editedAt
+    );
+  });
+  channel.bind("dm-reaction", (payload: ReactionUpdatedPayload) => {
+    dmHandlers.onDmReactionUpdated?.(payload.messageId, payload.reactions);
+  });
+}
+
+function unbindDmHandlers(channel: Channel): void {
+  channel.unbind("new-dm-message");
+  channel.unbind("dm-deleted");
+  channel.unbind("dm-edited");
+  channel.unbind("dm-reaction");
+}
+
+/**
+ * Subscribe to a conversation's private channel for realtime DM events.
+ * Multiple subscriptions to the same conversation share one channel.
+ */
+export function subscribeToDm(conversationId: string): void {
+  const instance = getPusher();
+  if (!instance) return;
+
+  const name = `private-dm-${conversationId}`;
+  let state = dmChannelStates.get(name);
+  if (state) return; // already subscribed
+
+  const channel = instance.subscribe(name);
+  state = { channel, handlersBound: true };
+  bindDmHandlers(channel);
+  dmChannelStates.set(name, state);
+}
+
+/** Unsubscribe from a conversation's private channel. */
+export function unsubscribeFromDm(conversationId: string): void {
+  if (!pusher) return;
+
+  const name = `private-dm-${conversationId}`;
+  const state = dmChannelStates.get(name);
+  if (!state) return;
+
+  unbindDmHandlers(state.channel);
+  pusher.unsubscribe(name);
+  dmChannelStates.delete(name);
 }

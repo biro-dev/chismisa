@@ -7,15 +7,18 @@ datasource db {
 }
 
 model User {
-  id          String             @id @default(cuid())
-  username    String             @unique
-  password    String
-  createdAt   DateTime           @default(now())
-  ownedGroups  Group[]
-  members      GroupMember[]
-  messages     Message[]
-  reactions    MessageReaction[]
-  deviceTokens DeviceToken[]
+  id               String                  @id @default(cuid())
+  username         String                  @unique
+  password         String
+  createdAt        DateTime                @default(now())
+  ownedGroups      Group[]
+  members          GroupMember[]
+  messages         Message[]
+  reactions        MessageReaction[]
+  deviceTokens     DeviceToken[]
+  conversations    ConversationMember[]
+  directMessages   DirectMessage[]         @relation("DirectMessageSender")
+  dmReactions      DirectMessageReaction[]
 }
 
 model Group {
@@ -80,6 +83,60 @@ model DeviceToken {
 
   @@index([userId])
   @@index([platform])
+}
+
+// ─── Direct messages ─────────────────────────────────────────────────────────
+
+// A 1-on-1 conversation between two users. Kept as a generic model so group
+// DMs could be added later; for now exactly two members per conversation.
+model Conversation {
+  id        String               @id @default(cuid())
+  createdAt DateTime             @default(now())
+  members   ConversationMember[]
+  messages  DirectMessage[]
+}
+
+model ConversationMember {
+  id             String       @id @default(cuid())
+  conversationId String
+  userId         String
+  lastReadAt     DateTime?
+  createdAt      DateTime     @default(now())
+  conversation   Conversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+  user           User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([conversationId, userId])
+  @@index([userId])
+}
+
+model DirectMessage {
+  id             String                  @id @default(cuid())
+  content        String
+  conversationId String
+  senderId       String
+  replyToId      String?
+  deletedAt      DateTime?
+  editedAt       DateTime?
+  createdAt      DateTime                @default(now())
+  conversation   Conversation            @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+  sender         User                    @relation("DirectMessageSender", fields: [senderId], references: [id], onDelete: Cascade)
+  replyTo        DirectMessage?          @relation("DirectMessageReplies", fields: [replyToId], references: [id], onDelete: SetNull)
+  replies        DirectMessage[]         @relation("DirectMessageReplies")
+  reactions      DirectMessageReaction[]
+
+  @@index([conversationId, createdAt])
+}
+
+model DirectMessageReaction {
+  id        String        @id @default(cuid())
+  messageId String
+  userId    String
+  emoji     String
+  createdAt DateTime      @default(now())
+  message   DirectMessage @relation(fields: [messageId], references: [id], onDelete: Cascade)
+  user      User          @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([messageId, userId, emoji])
 }
 
 

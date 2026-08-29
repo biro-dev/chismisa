@@ -26,6 +26,13 @@ import { GroupSidebar } from "@/components/group-sidebar";
 import { MessageBubble } from "@/components/message-bubble";
 import { Modal } from "@/components/modal";
 import { SearchModal } from "@/components/search-modal";
+import { DmView } from "@/components/dm-view";
+import { useDm } from "@/lib/hooks/use-dm";
+import {
+  findUserByUsername,
+  getConversations,
+  startConversationAction,
+} from "@/lib/actions/direct-messages";
 import {
   setBadgeHandler,
   watchGroups,
@@ -38,7 +45,7 @@ import {
   subscribeToTheme,
   toggleThemeInStore,
 } from "@/lib/theme";
-import type { DashboardProps, Group } from "@/lib/types";
+import type { Conversation, DashboardProps, Group } from "@/lib/types";
 import { groupColor } from "@/lib/group-color";
 import {
   createGroupAction,
@@ -98,6 +105,68 @@ export function Dashboard({
     messagesEndRef,
     scrollContainerRef,
   } = chat;
+
+  // ─── Direct messages ──────────────────────────────────────────────────────
+  const [dms, setDms] = useState<Conversation[]>([]);
+  const [activeDmId, setActiveDmId] = useState<string | null>(null);
+  const [showNewDmModal, setShowNewDmModal] = useState(false);
+  const [newDmUsername, setNewDmUsername] = useState("");
+  const [newDmError, setNewDmError] = useState("");
+  const [newDmPending, setNewDmPending] = useState(false);
+  const activeDm = dms.find((d) => d.id === activeDmId) ?? null;
+
+  // Refresh the sidebar conversation list (previews + unread badges)
+  const refreshConversations = useCallback(() => {
+    void getConversations().then((list) => setDms(list));
+  }, []);
+
+  // Load conversations on mount and poll every 30s for previews/badges
+  useEffect(() => {
+    refreshConversations();
+    const interval = setInterval(refreshConversations, 30_000);
+    return () => clearInterval(interval);
+  }, [refreshConversations]);
+
+  // All DM messaging state (messages, polling, realtime, optimistic send,
+  // edit/delete/react) lives in useDm — mirrors how groups use useChat.
+  const dm = useDm({
+    conversationId: activeDmId,
+    userId,
+    onConversationActivity: refreshConversations,
+  });
+
+  const handleSelectDm = (conversationId: string) => {
+    setActiveDmId(conversationId);
+  };
+
+  // Start (or open) a conversation with the given username
+  const handleStartDm = async () => {
+    setNewDmError("");
+    setNewDmPending(true);
+    try {
+      const user = await findUserByUsername(newDmUsername);
+      if (!user) {
+        setNewDmError("No user found with that username.");
+        return;
+      }
+      const result = await startConversationAction(user.id);
+      if (result.error || !result.conversationId) {
+        setNewDmError(result.error || "Failed to start conversation.");
+        return;
+      }
+      setActiveDmId(result.conversationId);
+      setShowNewDmModal(false);
+      setNewDmUsername("");
+      setSidebarOpen(false);
+      refreshConversations();
+    } catch {
+      setNewDmError("Something went wrong. Please try again.");
+    } finally {
+      setNewDmPending(false);
+    }
+  };
+  // ──────────────────────────────────────────────────────────────────────────
+
 
   // UI-only state (modals, sidebar, clipboard).
   const [sidebarOpen, setSidebarOpen] = useState(false);
@@ -209,6 +278,7 @@ export function Dashboard({
   // clears that group's unread badge immediately (before the server poll).
   const handleSelectGroup = useCallback(
     (groupId: string) => {
+      setActiveDmId(null); // switch away from any open DM
       setSidebarOpen(false);
       setGroupsState((prev) =>
         prev.map((g) => (g.id === groupId ? { ...g, unreadCount: 0 } : g))
@@ -334,6 +404,10 @@ export function Dashboard({
         theme={theme}
         groups={groupsState}
         selectedGroupId={selectedGroupId}
+        dms={dms}
+        selectedDmId={activeDmId}
+        onSelectDm={handleSelectDm}
+        onShowNewDm={() => setShowNewDmModal(true)}
         sidebarOpen={sidebarOpen}
         onToggleTheme={toggleTheme}
         onShowCreate={() => setShowCreateModal(true)}
@@ -358,12 +432,23 @@ export function Dashboard({
               <Hash className="h-3.5 w-3.5 text-white" />
             </div>
             <h2 className="text-sm font-semibold text-zinc-100">
-              {selectedGroup ? selectedGroup.name : "Chismisa"}
+              {activeDm
+                ? activeDm.otherUser.username
+                : selectedGroup
+                ? selectedGroup.name
+                : "Chismisa"}
             </h2>
           </div>
         </div>
 
-        {selectedGroup ? (
+        {activeDm ? (
+          <DmView
+            conversation={activeDm}
+            userId={userId}
+            dm={dm}
+            onBack={() => setActiveDmId(null)}
+          />
+        ) : selectedGroup ? (
           <>
             {/* Chat header */}
             <div className="flex items-center justify-between border-b border-zinc-800/60 px-5 py-3">
@@ -681,6 +766,51 @@ export function Dashboard({
           onClose={() => setShowSearchModal(false)}
           onJumpToMessage={jumpToMessage}
         />
+      )}
+
+      {/* New Direct Message Modal */}
+      {showNewDmModal && (
+        <Modal
+          onClose={() => {
+            setShowNewDmModal(false);
+            setNewDmError("");
+            setNewDmUsername("");
+          }}
+          title="New Direct Message"
+        >
+          <div className="space-y-4">
+            <p className="text-sm text-zinc-400">
+              Enter a username to start a private conversation.
+            </p>
+            {newDmError && (
+              <div className="rounded-lg border border-red-500/30 bg-red-500/10 px-4 py-3 text-sm text-red-400">
+                {newDmError}
+              </div>
+            )}
+            <input
+              type="text"
+              value={newDmUsername}
+              onChange={(e) => setNewDmUsername(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === "Enter" && !newDmPending) {
+                  e.preventDefault();
+                  void handleStartDm();
+                }
+              }}
+              placeholder="Username…"
+              maxLength={20}
+              autoFocus
+              className="w-full rounded-xl border border-zinc-700/60 bg-zinc-900/60 px-4 py-2.5 text-sm text-zinc-100 placeholder-zinc-500 outline-none transition-colors focus:border-purple-500 focus:ring-2 focus:ring-purple-500/20"
+            />
+            <button
+              onClick={() => void handleStartDm()}
+              disabled={newDmPending || newDmUsername.trim().length < 3}
+              className="w-full rounded-xl bg-gradient-to-r from-purple-600 to-fuchsia-600 py-2.5 text-sm font-semibold text-white transition-colors hover:from-purple-500 hover:to-fuchsia-500 disabled:opacity-60"
+            >
+              {newDmPending ? "Looking up…" : "Start Conversation"}
+            </button>
+          </div>
+        </Modal>
       )}
 
       {/* Invite Code Modal (owner only) */}
