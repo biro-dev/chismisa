@@ -233,7 +233,14 @@ export function useChat({
               const newMsgs = data.filter(
                 (m: Message) => !prev.some((p) => p.id === m.id)
               );
-              if (newMsgs.length === 0 && updated.length === prev.length)
+              // Skip the re-render only when nothing actually changed: no new
+              // ids AND every existing message is still the same reference.
+              // (freshMap.get(p.id) ?? p) returns p unchanged iff the message
+              // wasn't in the payload, so ref-identity catches edits/deletions.
+              if (
+                newMsgs.length === 0 &&
+                updated.every((u, i) => u === prev[i])
+              )
                 return prev;
               const merged = [...updated, ...newMsgs].sort(
                 (a, b) =>

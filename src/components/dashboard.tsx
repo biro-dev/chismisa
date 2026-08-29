@@ -27,6 +27,7 @@ import { Modal } from "@/components/modal";
 import {
   setBadgeHandler,
   watchGroups,
+  disconnectRealtime,
 } from "@/lib/realtime";
 import {
   applyTheme,
@@ -192,6 +193,15 @@ export function Dashboard({
     watchGroups(groups.map((g) => g.id));
   }, [groups]);
 
+  // Tear down the Pusher connection on hard navigation / page unload so we
+  // don't leak sockets. (Soft SPA navigation is handled group-by-group by
+  // useChat's realtime effect.)
+  useEffect(() => {
+    const onUnload = () => disconnectRealtime();
+    window.addEventListener("beforeunload", onUnload);
+    return () => window.removeEventListener("beforeunload", onUnload);
+  }, []);
+
   // Selecting a group from the sidebar also closes the mobile drawer and
   // clears that group's unread badge immediately (before the server poll).
   const handleSelectGroup = useCallback(
@@ -344,9 +354,13 @@ export function Dashboard({
                     {selectedGroup.name}
                   </h2>
                   <p className="text-xs text-zinc-500">
-                    {selectedGroup.memberCount} members{onlineCount > 0 && (
+                    {selectedGroup.memberCount} members
+                    {onlineCount > 0 && (
                       <span className="ml-1.5">
-                        · <span className="text-emerald-400">🟢 {onlineCount} online</span>
+                        ·{" "}
+                        <span className="text-emerald-400">
+                          🟢 {onlineCount} online
+                        </span>
                       </span>
                     )}
                   </p>
