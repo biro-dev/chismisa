@@ -1,6 +1,7 @@
 "use client";
 
 import { memo, useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 import { CornerUpLeft, Pencil, Plus, Search, Smile, Trash2, X } from "lucide-react";
 import { Capacitor } from "@capacitor/core";
 import { Haptics, ImpactStyle } from "@capacitor/haptics";
@@ -306,7 +307,7 @@ export const MessageBubble = memo(function MessageBubble({
       }`}
     >
       <div
-        className={`max-w-[85%] sm:max-w-[70%] ${
+        className={`w-fit min-w-0 max-w-[85%] sm:max-w-[70%] ${
           isOwn ? "items-end" : "items-start"
         }`}
       >
@@ -502,14 +503,16 @@ export const MessageBubble = memo(function MessageBubble({
           )}
         </div>
 
-        {/* Full Emoji Picker Modal */}
-        {emojiPickerOpen && (
-          <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
-            <div
-              ref={emojiPickerRef}
-              className="w-full max-w-sm rounded-2xl border border-zinc-700 bg-[#150d24] shadow-2xl"
-              onClick={(e) => e.stopPropagation()}
-            >
+        {/* Full Emoji Picker Modal - portaled to <body> to escape overflow clipping */}
+        {emojiPickerOpen &&
+          (typeof document !== "undefined"
+            ? createPortal(
+                <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/50 p-4">
+                  <div
+                    ref={emojiPickerRef}
+                    className="flex max-h-[88dvh] w-full max-w-sm flex-col rounded-2xl border border-zinc-700 bg-[#150d24] shadow-2xl"
+                    onClick={(e) => e.stopPropagation()}
+                  >
               {/* Header */}
               <div className="flex items-center justify-between border-b border-zinc-700 px-4 py-3">
                 <h3 className="font-semibold text-zinc-200">
@@ -575,7 +578,7 @@ export const MessageBubble = memo(function MessageBubble({
               )}
 
               {/* Emoji Grid */}
-              <div className="max-h-64 overflow-y-auto p-4">
+              <div className="min-h-0 flex-1 overflow-y-auto p-4">
                 {filteredEmojis ? (
                   filteredEmojis.length > 0 ? (
                     <div className="grid grid-cols-8 gap-1">
@@ -610,9 +613,11 @@ export const MessageBubble = memo(function MessageBubble({
                   </div>
                 )}
               </div>
-            </div>
-          </div>
-        )}
+                </div>
+              </div>,
+              document.body
+            )
+          : null)}
 
         <p
           className={`mt-1 text-[10px] text-zinc-600 ${
