@@ -318,19 +318,16 @@ export const MessageBubble = memo(function MessageBubble({
         >
           {isOwn ? "You" : msg.username}
         </p>
-        <div
-          className={`msg-bubble-content relative rounded-2xl px-4 pt-2.5 text-sm ${
-            msg.deletedAt
-              ? "border border-dashed border-zinc-700 py-2.5 italic text-zinc-500"
-              : isOwn
-              ? `rounded-br-sm bg-gradient-to-r from-purple-600 to-fuchsia-600 text-white ${
-                  isEditing ? "pb-3" : "pb-9"
-                }`
-              : `rounded-bl-sm bg-zinc-800 text-zinc-100 ${
-                  isEditing ? "pb-3" : "pb-9"
-                }`
-          }`}
-        >
+        <div className="relative">
+          <div
+            className={`msg-bubble-content rounded-2xl px-4 py-2.5 text-sm ${
+              msg.deletedAt
+                ? "border border-dashed border-zinc-700 italic text-zinc-500"
+                : isOwn
+                ? "rounded-br-sm bg-gradient-to-r from-purple-600 to-fuchsia-600 text-white"
+                : "rounded-bl-sm bg-zinc-800 text-zinc-100"
+            }`}
+          >
           {/* Reply indicator */}
           {msg.replyTo && !msg.deletedAt && (
             <div
@@ -390,19 +387,20 @@ export const MessageBubble = memo(function MessageBubble({
           ) : (
             <p className="whitespace-pre-wrap break-words">{msg.content}</p>
           )}
+          </div>
 
-          {/* Action buttons - overlay inside bubble bottom-right (out of flow, so bubbles shrink-to-fit) */}
+          {/* Action buttons - floating just below the bubble so only the message sits inside it */}
           {!msg.deletedAt && !isEditing && (
-            <div className="absolute bottom-1 right-1 z-10 flex items-center gap-0.5 opacity-100 transition-opacity md:opacity-0 md:group-hover:opacity-100">
+            <div
+              className={`absolute top-full mt-1 z-20 flex items-center gap-0.5 opacity-100 transition-opacity md:opacity-0 md:group-hover:opacity-100 ${
+                isOwn ? "right-0" : "left-0"
+              }`}
+            >
               {/* Reply button */}
               {!msg.deletedAt && (
                 <button
                   onClick={() => onReply(msg)}
-                  className={`rounded-lg p-1.5 transition-colors ${
-                    isOwn
-                      ? "text-white/80 hover:bg-white/20 hover:text-white"
-                      : "text-zinc-400 hover:bg-zinc-700 hover:text-purple-300"
-                  }`}
+                  className="rounded-lg p-1.5 text-zinc-400 transition-colors hover:bg-zinc-700 hover:text-purple-300"
                   title="Reply"
                 >
                   <CornerUpLeft className="h-3.5 w-3.5" />
@@ -412,7 +410,7 @@ export const MessageBubble = memo(function MessageBubble({
               {isOwn && !msg.deletedAt && (
                 <button
                   onClick={startEditing}
-                  className="rounded-lg p-1.5 text-white/80 transition-colors hover:bg-white/20 hover:text-sky-300"
+                  className="rounded-lg p-1.5 text-zinc-400 transition-colors hover:bg-zinc-700 hover:text-sky-400"
                   title="Edit message"
                 >
                   <Pencil className="h-3.5 w-3.5" />
@@ -422,7 +420,7 @@ export const MessageBubble = memo(function MessageBubble({
               {isOwn && !msg.deletedAt && (
                 <button
                   onClick={() => onDelete(msg.id)}
-                  className="rounded-lg p-1.5 text-white/80 transition-colors hover:bg-white/20 hover:text-red-300"
+                  className="rounded-lg p-1.5 text-zinc-400 transition-colors hover:bg-zinc-700 hover:text-red-400"
                   title="Delete message"
                 >
                   <Trash2 className="h-3.5 w-3.5" />
@@ -435,11 +433,7 @@ export const MessageBubble = memo(function MessageBubble({
                 onPointerUp={handlePointerUp}
                 onPointerCancel={handlePointerCancel}
                 onClick={handleReactButtonClick}
-                className={`relative touch-none select-none rounded-lg p-1.5 transition-colors ${
-                  isOwn
-                    ? "text-white/80 hover:bg-white/20 hover:text-amber-300"
-                    : "text-zinc-400 hover:bg-zinc-700 hover:text-amber-300"
-                }`}
+                className="relative touch-none select-none rounded-lg p-1.5 text-zinc-400 transition-colors hover:bg-zinc-700 hover:text-amber-300"
                 title="React"
               >
                 <Smile className="h-3.5 w-3.5" />
