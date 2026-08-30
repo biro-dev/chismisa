@@ -320,7 +320,7 @@ export const MessageBubble = memo(function MessageBubble({
         </p>
         <div className="relative">
           <div
-            className={`msg-bubble-content rounded-2xl px-4 py-2.5 text-sm ${
+            className={`msg-bubble-content relative rounded-2xl px-4 pt-2.5 pb-8 text-sm ${
               msg.deletedAt
                 ? "border border-dashed border-zinc-700 italic text-zinc-500"
                 : isOwn
@@ -387,7 +387,21 @@ export const MessageBubble = memo(function MessageBubble({
           ) : (
             <p className="whitespace-pre-wrap break-words">{msg.content}</p>
           )}
-          </div>
+          {/* Timestamp - inside bubble bottom-right, so it never overlaps floating actions */}
+          <p
+            className={`absolute bottom-1.5 right-3 text-[10px] leading-none ${
+              msg.deletedAt ? "text-zinc-500" : isOwn ? "text-white/70" : "text-zinc-500"
+            }`}
+          >
+            {formattedTime}
+            {!msg.deletedAt && msg.editedAt && (
+              <span className="ml-1 italic">(edited)</span>
+            )}
+            {isOwn && !msg.deletedAt && (msg.seenCount ?? 0) > 0 && (
+              <span className="ml-1 text-emerald-300">Seen by {msg.seenCount}</span>
+            )}
+          </p>
+</div>
 
           {/* Action buttons - floating just below the bubble so only the message sits inside it */}
           {!msg.deletedAt && !isEditing && (
@@ -622,24 +636,6 @@ export const MessageBubble = memo(function MessageBubble({
               document.body
             )
           : null)}
-
-        <p
-          className={`mt-1 text-[10px] text-zinc-600 ${
-            isOwn ? "text-right" : ""
-          }`}
-        >
-          {formattedTime}
-          {/* Edited marker */}
-          {!msg.deletedAt && msg.editedAt && (
-            <span className="ml-1.5 italic text-zinc-500">(edited)</span>
-          )}
-          {/* Read receipt — anonymous count of who has seen it */}
-          {isOwn && !msg.deletedAt && (msg.seenCount ?? 0) > 0 && (
-            <span className="ml-1.5 text-emerald-500">
-              Seen by {msg.seenCount}
-            </span>
-          )}
-        </p>
       </div>
     </div>
   );
