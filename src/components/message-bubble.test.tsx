@@ -74,38 +74,63 @@ describe("MessageBubble", () => {
     expect(screen.getByText("original chismis")).toBeTruthy();
   });
 
-  it("hides content for deleted messages", () => {
+    it("hides content for deleted messages", () => {
     makeBubble({ deletedAt: new Date().toISOString() });
-    expect(screen.getByText("This message was deleted")).toBeTruthy();
+    expect(screen.getByText("Message unsent")).toBeTruthy();
     expect(screen.queryByText("Grabe, chismis ko sayo")).toBeNull();
   });
 
-  it("shows the delete button only on own, non-deleted messages", () => {
-    makeBubble();
+  it("shows the delete button only on own, non-deleted messages", async () => {
+    const msg = { ...baseMessage };
+    const onReply = vi.fn();
+    const onReact = vi.fn();
+    const onDelete = vi.fn();
+    const onEdit = vi.fn();
+    const { rerender } = render(
+      <MessageBubble
+        msg={msg}
+        isOwn={false}
+        userId="user_1"
+        onReply={onReply}
+        onReact={onReact}
+        onDelete={onDelete}
+        onEdit={onEdit}
+      />
+    );
     expect(screen.queryByTitle("Delete message")).toBeNull();
 
     // Rerender as own message
-    const msg = { ...baseMessage };
-    render(
+    rerender(
       <MessageBubble
         msg={msg}
         isOwn
         userId="user_1"
-        onReply={vi.fn()}
-        onReact={vi.fn()}
-        onDelete={vi.fn()}
-        onEdit={vi.fn()}
+        onReply={onReply}
+        onReact={onReact}
+        onDelete={onDelete}
+        onEdit={onEdit}
       />
     );
+    // Click the bubble to open the overlay
+    const bubble = document.querySelector(".msg-bubble-interactive") as HTMLElement;
+    await userEvent.click(bubble);
     expect(screen.getAllByTitle("Delete message").length).toBeGreaterThan(0);
   });
 
   it("invokes onReply and onDelete via the action buttons", async () => {
     const { onReply, onDelete } = makeBubble({}, true);
 
+    const openOverlay = async () => {
+      const bubble = document.querySelector(".msg-bubble-interactive") as HTMLElement;
+      await userEvent.click(bubble);
+    };
+
+    await openOverlay();
     await userEvent.click(screen.getByTitle("Reply"));
     expect(onReply).toHaveBeenCalledWith(baseMessage);
 
+    // The overlay closes after an action — reopen before the next one
+    await openOverlay();
     await userEvent.click(screen.getByTitle("Delete message"));
     expect(onDelete).toHaveBeenCalledWith("msg_1");
   });
@@ -130,6 +155,12 @@ describe("MessageBubble", () => {
 
   it("opens the reaction picker on desktop click and reacts with an emoji", async () => {
     const { onReact } = makeBubble();
+
+    // Click the bubble to open the overlay
+    const bubble = document.querySelector(".msg-bubble-interactive");
+    await userEvent.click(bubble as HTMLElement);
+
+    // Click the React button in the action menu
     await userEvent.click(screen.getByTitle("React"));
 
     const picker = document.querySelector("[data-emoji='❤️']");

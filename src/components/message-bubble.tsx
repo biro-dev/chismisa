@@ -17,7 +17,12 @@ function triggerHaptic(style: ImpactStyle) {
   }
 }
 
-// Deep-compare reactions to avoid re-rendering bubbles when data didn't change
+// Messenger-style default reactions (left to right)
+const MESSENGER_REACTIONS = ["\uD83D\uDC4D", "\u2764\uFE0F", "\uD83E\uDD70", "\uD83D\uDE02", "\uD83D\uDE2E", "\uD83D\uDE22", "\uD83D\uDE21"];
+const SWIPE_TRIGGER_PX = 60;
+const LONG_PRESS_MS = 450;
+
+// Deep-compare reactions to avoid re-rendering bubbles when data didn\'t change
 const areReactionsEqual = (a: MessageReaction[], b: MessageReaction[]) => {
   if (a.length !== b.length) return false;
   for (let i = 0; i < a.length; i++) {
@@ -32,8 +37,7 @@ const areReactionsEqual = (a: MessageReaction[], b: MessageReaction[]) => {
   return true;
 };
 
-// Custom memo comparator — only re-renders a bubble when its own data changed.
-// This prevents every bubble from re-rendering on each 30s poll.
+// Custom memo comparator - only re-renders a bubble when its own data changed.
 type MessageBubbleProps = {
   msg: Message;
   isOwn: boolean;
@@ -43,7 +47,6 @@ type MessageBubbleProps = {
   onDelete: (messageId: string) => void;
   onEdit: (messageId: string, content: string) => Promise<{ error?: string }>;
 };
-
 const messageBubbleAreEqual = (
   prev: MessageBubbleProps,
   next: MessageBubbleProps
@@ -63,7 +66,7 @@ const messageBubbleAreEqual = (
   return true;
 };
 
-// Memoized message bubble — only re-renders when its own message data changes
+// Memoized message bubble - only re-renders when its own message data changes
 export const MessageBubble = memo(function MessageBubble({
   msg,
   isOwn,
@@ -73,49 +76,39 @@ export const MessageBubble = memo(function MessageBubble({
   onDelete,
   onEdit,
 }: MessageBubbleProps) {
-  const [reactionMenuOpen, setReactionMenuOpen] = useState(false);
+  const [overlayOpen, setOverlayOpen] = useState(false);
   const [highlightedEmoji, setHighlightedEmoji] = useState<string | null>(null);
   // Full emoji picker state
   const [emojiPickerOpen, setEmojiPickerOpen] = useState(false);
   const [emojiSearchQuery, setEmojiSearchQuery] = useState("");
   const [activeEmojiCategory, setActiveEmojiCategory] = useState(0);
-  // Inline edit state — the editor lives in the bubble so each message owns
-  // its own open/closed state without any global tracking.
+  // Inline edit state
   const [isEditing, setIsEditing] = useState(false);
   const [editDraft, setEditDraft] = useState("");
   const [editError, setEditError] = useState("");
   const editInputRef = useRef<HTMLTextAreaElement>(null);
-  const pressTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const isDraggingRef = useRef(false);
-  const suppressClickRef = useRef(false);
-  const highlightedEmojiRef = useRef<string | null>(null);
-  const startPosRef = useRef<{ x: number; y: number } | null>(null);
+  const bubbleRef = useRef<HTMLDivElement>(null);
   const pickerRef = useRef<HTMLDivElement>(null);
   const emojiPickerRef = useRef<HTMLDivElement>(null);
   const emojiSearchRef = useRef<HTMLInputElement>(null);
-
+  const [overlayAnchor, setOverlayAnchor] = useState<{
+    x: number;
+    y: number;
+    below: boolean;
+  } | null>(null);
+  const [swipeX, setSwipeX] = useState(0);
+  const swipingRef = useRef(false);
+  const pressTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const gestureModeRef = useRef<"idle" | "pending" | "longpress" | "swipe">("idle");
+  const startPosRef = useRef<{ x: number; y: number } | null>(null);
+  const suppressClickRef = useRef(false);
+  const highlightedEmojiRef = useRef<string | null>(null);
+  const leftPosRef = useRef(0);
   // Filter emojis based on search query
   const filteredEmojis = useMemo(() => {
     if (!emojiSearchQuery.trim()) return null;
     return searchEmojis(emojiSearchQuery);
   }, [emojiSearchQuery]);
-
-  // Close emoji picker when clicking outside
-  useEffect(() => {
-    function handleClickOutside(event: MouseEvent) {
-      if (
-        emojiPickerRef.current &&
-        !emojiPickerRef.current.contains(event.target as Node)
-      ) {
-        setEmojiPickerOpen(false);
-      }
-    }
-    if (emojiPickerOpen) {
-      document.addEventListener("mousedown", handleClickOutside);
-      return () =>
-        document.removeEventListener("mousedown", handleClickOutside);
-    }
-  }, [emojiPickerOpen]);
 
   // Reset search when closing picker
   useEffect(() => {
@@ -125,16 +118,7 @@ export const MessageBubble = memo(function MessageBubble({
     }
   }, [emojiPickerOpen]);
 
-  const handleSelectEmoji = useCallback(
-    (emoji: string) => {
-      onReact(msg.id, emoji);
-      setEmojiPickerOpen(false);
-      setReactionMenuOpen(false);
-    },
-    [msg.id, onReact]
-  );
-
-  // Memoized formatted timestamp — computed once per message
+  // Memoized formatted timestamp - computed once per message
   const formattedTime = useMemo(
     () =>
       new Date(msg.createdAt).toLocaleTimeString([], {
@@ -144,7 +128,7 @@ export const MessageBubble = memo(function MessageBubble({
     [msg.createdAt]
   );
 
-  // Group reactions by emoji — memoized so it only recomputes when reactions change
+  // Group reactions by emoji - memoized so it only recomputes when reactions change
   const groupedReactions = useMemo(() => {
     const grouped = new Map<string, MessageReaction[]>();
     for (const r of msg.reactions || []) {
@@ -155,7 +139,23 @@ export const MessageBubble = memo(function MessageBubble({
     return Array.from(grouped.entries());
   }, [msg.reactions]);
 
-  // --- Messenger-style hold-and-slide reaction picker (quick reactions) ---
+  // Close overlay when another bubble opens its overlay
+  useEffect(() => {
+    if (!overlayOpen) return;
+    const handler = () => setOverlayOpen(false);
+    window.addEventListener("chismis-overlay-close", handler);
+    return () => window.removeEventListener("chismis-overlay-close", handler);
+  }, [overlayOpen]);
+
+  // Lock body scroll while the overlay is open
+  useEffect(() => {
+    if (!overlayOpen && !emojiPickerOpen) return;
+    const prev = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+    return () => {
+      document.body.style.overflow = prev;
+    };
+  }, [overlayOpen, emojiPickerOpen]);
 
   const clearPressTimer = useCallback(() => {
     if (pressTimerRef.current) {
@@ -166,119 +166,153 @@ export const MessageBubble = memo(function MessageBubble({
 
   // Clean up timer on unmount
   useEffect(() => clearPressTimer, [clearPressTimer]);
+  const openOverlay = useCallback(() => {
+    // Close any other open overlay
+    window.dispatchEvent(new Event("chismis-overlay-close"));
+    const el = bubbleRef.current;
+    if (!el) return;
+    const rect = el.getBoundingClientRect();
+    const below = rect.top < 300;
+    setOverlayAnchor({
+      x: Math.round(rect.left + rect.width / 2),
+      y: Math.round(rect.top),
+      below,
+    });
+    setOverlayOpen(true);
+    setHighlightedEmoji(null);
+    highlightedEmojiRef.current = null;
+  }, []);
 
+  const closeOverlay = useCallback(() => {
+    setOverlayOpen(false);
+    setHighlightedEmoji(null);
+    highlightedEmojiRef.current = null;
+  }, []);
+
+  // --- Touch gesture handling on the bubble ---
+  // - Long-press (>450ms) opens the reaction overlay
+  // - Horizontal swipe (>60px) triggers reply
+  // - Scroll is still possible vertically (touch-action: pan-y)
   const handlePointerDown = useCallback(
-    (e: React.PointerEvent<HTMLButtonElement>) => {
-      if (e.pointerType === "mouse") return; // desktop uses click
-      isDraggingRef.current = false;
-      highlightedEmojiRef.current = null;
+    (e: React.PointerEvent<HTMLDivElement>) => {
+      if (msg.deletedAt || isEditing) return;
+      const isTouch = e.pointerType !== "mouse";
+      suppressClickRef.current = false;
       startPosRef.current = { x: e.clientX, y: e.clientY };
-      // Capture pointer so we keep receiving move/up events even off the button
-      e.currentTarget.setPointerCapture(e.pointerId);
-// Long-press (~200ms) opens the picker and starts drag tracking
+      leftPosRef.current = 0;
+
+      if (isTouch) {
+        gestureModeRef.current = "pending";
+        e.currentTarget.setPointerCapture(e.pointerId);
+        // Long-press threshold
         pressTimerRef.current = setTimeout(() => {
-          isDraggingRef.current = true;
-          setReactionMenuOpen(true);
-          setHighlightedEmoji(null);
-          // Light haptic feedback on native (Capacitor) platforms
+          if (gestureModeRef.current !== "pending") return;
+          gestureModeRef.current = "longpress";
           triggerHaptic(ImpactStyle.Light);
-        }, 200);
+          openOverlay();
+        }, LONG_PRESS_MS);
+      } else {
+        // Desktop: single click opens the overlay (with click suppression after gesture)
+        gestureModeRef.current = "pending";
+      }
     },
-    []
+    [msg.deletedAt, isEditing, openOverlay]
   );
 
   const handlePointerMove = useCallback(
-    (e: React.PointerEvent<HTMLButtonElement>) => {
-      // If not dragging yet, check if pointer moved too much (scroll gesture)
-      if (!isDraggingRef.current) {
-        const start = startPosRef.current;
-        if (start) {
-          const dx = Math.abs(e.clientX - start.x);
-          const dy = Math.abs(e.clientY - start.y);
-          if (dx > 10 || dy > 10) {
-            clearPressTimer();
-            startPosRef.current = null;
-          }
+    (e: React.PointerEvent<HTMLDivElement>) => {
+      const start = startPosRef.current;
+      if (!start) return;
+      const dx = e.clientX - start.x;
+      const dy = e.clientY - start.y;
+
+      if (gestureModeRef.current === "pending") {
+        // Movement cancels long-press unless it's a clear horizontal swipe
+        const absDx = Math.abs(dx);
+        const absDy = Math.abs(dy);
+        if (absDx > 14 && absDx > absDy * 1.2) {
+          clearPressTimer();
+          gestureModeRef.current = "swipe";
+          swipingRef.current = true;
+          suppressClickRef.current = true;
+          setSwipeX(Math.min(110, Math.max(0, dx)));
+        } else if (absDy > 14 || (absDx > 14 && absDy > absDx)) {
+          // Vertical or diagonal movement - cancel long-press
+          clearPressTimer();
+          gestureModeRef.current = "idle";
         }
         return;
       }
-      if (!reactionMenuOpen) return;
-      const picker = pickerRef.current;
-      if (!picker) return;
-      const rect = picker.getBoundingClientRect();
-      const x = e.clientX;
-      const y = e.clientY;
-      // Check if pointer is within picker bounds (with padding for easier targeting)
-      const isInside =
-        x >= rect.left - 12 &&
-        x <= rect.right + 12 &&
-        y >= rect.top - 12 &&
-        y <= rect.bottom + 12;
-      if (isInside) {
-        const emojiButtons =
-          picker.querySelectorAll<HTMLButtonElement>("[data-emoji]");
-        let found: string | null = null;
-        for (const btn of emojiButtons) {
-          const r = btn.getBoundingClientRect();
-          if (x >= r.left && x <= r.right && y >= r.top && y <= r.bottom) {
-            found = btn.dataset.emoji || null;
-            break;
-          }
-        }
-        highlightedEmojiRef.current = found;
-        setHighlightedEmoji(found);
-      } else {
-        highlightedEmojiRef.current = null;
-        setHighlightedEmoji(null);
+
+      if (gestureModeRef.current === "swipe") {
+        // Follow finger, clamp to 110px
+        const next = Math.min(110, Math.max(0, dx));
+        setSwipeX(next);
       }
     },
-    [reactionMenuOpen, clearPressTimer]
+    [clearPressTimer]
   );
 
-  const handlePointerUp = useCallback(() => {
-    clearPressTimer();
-    startPosRef.current = null;
-    if (isDraggingRef.current) {
-      const emoji = highlightedEmojiRef.current;
-      if (emoji) {
-        onReact(msg.id, emoji);
-        // Haptic feedback when an emoji is selected on native
-        triggerHaptic(ImpactStyle.Medium);
+  const finishSwipe = useCallback(
+    (threshold: boolean) => {
+      const start = startPosRef.current;
+      if (threshold && start) {
+        onReply(msg);
       }
-      isDraggingRef.current = false;
-      suppressClickRef.current = true;
-      setReactionMenuOpen(false);
-      setHighlightedEmoji(null);
-      highlightedEmojiRef.current = null;
-      // Reset after the click event has a chance to fire
-      requestAnimationFrame(() => {
-        suppressClickRef.current = false;
-      });
-    }
-  }, [clearPressTimer, onReact, msg.id]);
+      setSwipeX(0);
+    },
+    [onReply, msg]
+  );
+
+  const handlePointerUp = useCallback(
+    (e: React.PointerEvent<HTMLDivElement>) => {
+      clearPressTimer();
+      const start = startPosRef.current;
+      if (gestureModeRef.current === "swipe") {
+        const dx = e.clientX - (start?.x ?? e.clientX);
+        finishSwipe(dx >= SWIPE_TRIGGER_PX);
+        gestureModeRef.current = "idle";
+        startPosRef.current = null;
+        suppressClickRef.current = true;
+        requestAnimationFrame(() => {
+          suppressClickRef.current = false;
+        });
+        return;
+      }
+      if (gestureModeRef.current === "longpress") {
+        // Keep overlay open - pointer release shouldn't immediately close it
+        gestureModeRef.current = "idle";
+        startPosRef.current = null;
+        return;
+      }
+      gestureModeRef.current = "idle";
+      startPosRef.current = null;
+    },
+    [clearPressTimer, finishSwipe]
+  );
 
   const handlePointerCancel = useCallback(() => {
     clearPressTimer();
     startPosRef.current = null;
-    isDraggingRef.current = false;
-    setReactionMenuOpen(false);
-    setHighlightedEmoji(null);
-    highlightedEmojiRef.current = null;
+    gestureModeRef.current = "idle";
+    swipingRef.current = false;
+    setSwipeX(0);
   }, [clearPressTimer]);
 
-  // Desktop click toggle — ignored if a drag interaction just happened
-  const handleReactButtonClick = useCallback(() => {
+  // Desktop: click toggles overlay (suppressed after a swipe/long-press)
+  const handleBubbleClick = useCallback(() => {
+    if (msg.deletedAt || isEditing) return;
     if (suppressClickRef.current) return;
-    setReactionMenuOpen((open) => !open);
-  }, []);
-
+    if (gestureModeRef.current !== "idle") return;
+    openOverlay();
+  }, [msg.deletedAt, isEditing, openOverlay]);
   // --- Inline editing ---
 
   const startEditing = useCallback(() => {
     setEditDraft(msg.content);
     setEditError("");
     setIsEditing(true);
-    // Focus the textarea once it has rendered
+    setOverlayOpen(false);
     requestAnimationFrame(() => editInputRef.current?.focus());
   }, [msg.content]);
 
@@ -299,6 +333,57 @@ export const MessageBubble = memo(function MessageBubble({
     setEditError("");
   }, [onEdit, msg.id, editDraft]);
 
+  const handleSelectEmoji = useCallback(
+    (emoji: string) => {
+      onReact(msg.id, emoji);
+      setEmojiPickerOpen(false);
+      setOverlayOpen(false);
+      setHighlightedEmoji(null);
+      highlightedEmojiRef.current = null;
+    },
+    [msg.id, onReact]
+  );
+
+  const commitReaction = useCallback(
+    (emoji: string) => {
+      onReact(msg.id, emoji);
+      triggerHaptic(ImpactStyle.Medium);
+      setOverlayOpen(false);
+      setHighlightedEmoji(null);
+      highlightedEmojiRef.current = null;
+    },
+    [msg.id, onReact]
+  );
+
+  // Esc closes the overlay or emoji picker
+  useEffect(() => {
+    if (!overlayOpen && !emojiPickerOpen) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") {
+        setOverlayOpen(false);
+        setEmojiPickerOpen(false);
+      }
+    };
+    document.addEventListener("keydown", onKey);
+    return () => document.removeEventListener("keydown", onKey);
+  }, [overlayOpen, emojiPickerOpen]);
+
+  // Click outside the emoji picker closes it
+  useEffect(() => {
+    function handleClickOutside(event: MouseEvent) {
+      if (
+        emojiPickerRef.current &&
+        !emojiPickerRef.current.contains(event.target as Node)
+      ) {
+        setEmojiPickerOpen(false);
+      }
+    }
+    if (emojiPickerOpen) {
+      document.addEventListener("mousedown", handleClickOutside);
+      return () =>
+        document.removeEventListener("mousedown", handleClickOutside);
+    }
+  }, [emojiPickerOpen]);
   return (
     <div
       data-message-id={msg.id}
@@ -318,16 +403,24 @@ export const MessageBubble = memo(function MessageBubble({
         >
           {isOwn ? "You" : msg.username}
         </p>
-        <div className="relative">
-          <div
-            className={`msg-bubble-content relative rounded-2xl px-4 pt-2.5 pb-8 text-sm ${
-              msg.deletedAt
-                ? "border border-dashed border-zinc-700 italic text-zinc-500"
-                : isOwn
-                ? "rounded-br-sm bg-gradient-to-r from-purple-600 to-fuchsia-600 text-white"
-                : "rounded-bl-sm bg-zinc-800 text-zinc-100"
-            }`}
-          >
+        <div
+          ref={bubbleRef}
+          onPointerDown={handlePointerDown}
+          onPointerMove={handlePointerMove}
+          onPointerUp={handlePointerUp}
+          onPointerCancel={handlePointerCancel}
+          onClick={handleBubbleClick}
+          className={`msg-bubble-interactive relative rounded-2xl px-4 pt-2.5 pb-8 text-sm transition-[transform] duration-300 select-none ${
+            swipeX > 0 ? "" : "[transition-timing-function:cubic-bezier(0.25,1,0.5,1)]"
+          } ${
+            msg.deletedAt
+              ? "border border-dashed border-zinc-700 italic text-zinc-500"
+              : isOwn
+              ? "rounded-br-sm bg-gradient-to-r from-purple-600 to-fuchsia-600 text-white"
+              : "rounded-bl-sm bg-zinc-800 text-zinc-100"
+          }`}
+          style={swipeX > 0 ? { transform: `translateX(${Math.min(swipeX, 110)}px)` } : { transform: "translateX(0)" }}
+        >
           {/* Reply indicator */}
           {msg.replyTo && !msg.deletedAt && (
             <div
@@ -339,15 +432,13 @@ export const MessageBubble = memo(function MessageBubble({
             >
               <CornerUpLeft className="mt-0.5 h-3 w-3 shrink-0" />
               <div className="min-w-0">
-                <p className="font-medium">
-                  Replying to {msg.replyTo.username}
-                </p>
+                <p className="font-medium">Replying to {msg.replyTo.username}</p>
                 <p className="truncate opacity-80">{msg.replyTo.content}</p>
               </div>
             </div>
           )}
           {msg.deletedAt ? (
-            <p className="italic">This message was deleted</p>
+            <p className="italic">Message unsent</p>
           ) : isEditing ? (
             <div className="space-y-2">
               <textarea
@@ -387,7 +478,7 @@ export const MessageBubble = memo(function MessageBubble({
           ) : (
             <p className="whitespace-pre-wrap break-words">{msg.content}</p>
           )}
-          {/* Timestamp - inside bubble bottom-right, so it never overlaps floating actions */}
+          {/* Timestamp - inside bubble bottom-right */}
           <p
             className={`absolute bottom-1.5 right-3 text-[10px] leading-none ${
               msg.deletedAt ? "text-zinc-500" : isOwn ? "text-white/70" : "text-zinc-500"
@@ -401,77 +492,146 @@ export const MessageBubble = memo(function MessageBubble({
               <span className="ml-1 text-emerald-300">Seen by {msg.seenCount}</span>
             )}
           </p>
-</div>
 
-          {/* Action buttons - floating just below the bubble so only the message sits inside it */}
-          {!msg.deletedAt && !isEditing && (
+          {/* Applied reaction badges - overlapping on the bubble's bottom corner */}
+          {!msg.deletedAt && groupedReactions.length > 0 && (
             <div
-              className={`absolute top-full mt-1 z-20 flex items-center gap-0.5 opacity-100 transition-opacity md:opacity-0 md:group-hover:opacity-100 ${
-                isOwn ? "right-0" : "left-0"
-              }`}
+              className={`absolute bottom-[-10px] z-10 flex ${isOwn ? "right-2" : "left-2"}`}
             >
-              {/* Reply button */}
-              {!msg.deletedAt && (
+              {groupedReactions.slice(0, 3).map(([emoji, reactions], i) => (
                 <button
-                  onClick={() => onReply(msg)}
-                  className="rounded-lg p-1.5 text-zinc-400 transition-colors hover:bg-zinc-700 hover:text-purple-300"
-                  title="Reply"
+                  key={emoji}
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    onReact(msg.id, emoji);
+                  }}
+                  className={`flex items-center gap-0.5 rounded-full border px-1.5 py-0.5 text-xs shadow-md transition-transform hover:scale-105 ${
+                    reactions.some((r) => r.userId === userId)
+                      ? "border-purple-400 bg-purple-600 text-white"
+                      : "border-zinc-700 bg-[#150d24] text-zinc-200"
+                  } ${i > 0 ? "-ml-1.5" : ""}`}
+                  title={`${reactions.map((r) => r.username).join(", ")}`}
                 >
-                  <CornerUpLeft className="h-3.5 w-3.5" />
+                  <span className="mr-0.5">{emoji}</span>
+                  <span className="font-semibold">{reactions.length}</span>
                 </button>
-              )}
-              {/* Edit button - only on own non-deleted messages */}
-              {isOwn && !msg.deletedAt && (
-                <button
-                  onClick={startEditing}
-                  className="rounded-lg p-1.5 text-zinc-400 transition-colors hover:bg-zinc-700 hover:text-sky-400"
-                  title="Edit message"
-                >
-                  <Pencil className="h-3.5 w-3.5" />
-                </button>
-              )}
-              {/* Delete button - only on own messages */}
-              {isOwn && !msg.deletedAt && (
-                <button
-                  onClick={() => onDelete(msg.id)}
-                  className="rounded-lg p-1.5 text-zinc-400 transition-colors hover:bg-zinc-700 hover:text-red-400"
-                  title="Delete message"
-                >
-                  <Trash2 className="h-3.5 w-3.5" />
-                </button>
-              )}
-              {/* Reaction button - hold and slide on touch, click on desktop */}
-              <button
-                onPointerDown={handlePointerDown}
-                onPointerMove={handlePointerMove}
-                onPointerUp={handlePointerUp}
-                onPointerCancel={handlePointerCancel}
-                onClick={handleReactButtonClick}
-                className="relative touch-none select-none rounded-lg p-1.5 text-zinc-400 transition-colors hover:bg-zinc-700 hover:text-amber-300"
-                title="React"
-              >
-                <Smile className="h-3.5 w-3.5" />
-              </button>
+              ))}
+            </div>
+          )}
+        </div>
+      </div>
 
-              {/* Reaction quick actions - appears above the buttons (Messenger-style) */}
-              {reactionMenuOpen && (
+      {/* --- Messenger-style reaction/action overlay (portaled to body) --- */}
+      {overlayOpen &&
+      !msg.deletedAt &&
+      !isEditing &&
+      overlayAnchor &&
+      typeof document !== "undefined"
+        ? createPortal(
+            <div
+              className="fixed inset-0 z-[70] backdrop-blur-[2px]"
+              style={{ backgroundColor: "rgba(0,0,0,0.4)" }}
+              onClick={closeOverlay}
+            >
+              {/* Reaction pill + action menu anchored above/below the bubble */}
+              <div
+                ref={pickerRef}
+                onClick={(e) => e.stopPropagation()}
+                className={`absolute z-10 flex flex-col items-center ${
+                  overlayAnchor.below
+                    ? "top-24 left-1/2 -translate-x-1/2"
+                    : "top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2"
+                }`}
+                style={{
+                  left: overlayAnchor.x,
+                  top: overlayAnchor.below ? undefined : overlayAnchor.y - 8 - 200,
+                }}
+              >
+                {/* Action menu - stack above the pill */}
                 <div
-                  ref={pickerRef}
-                  className="absolute bottom-full mb-1 z-30 flex gap-1 rounded-full border border-zinc-700 bg-[#150d24] px-2 py-1.5 shadow-xl animate-reaction-picker transform-gpu"
+                  className={`mb-2 flex items-center gap-1 rounded-2xl bg-white p-1 shadow-lg ${
+                    overlayAnchor.below ? "flex-row" : "flex-col"
+                  } animate-reaction-picker`}
                 >
-                  {QUICK_EMOJIS.slice(0, 6).map((emoji, index) => (
+                                    {/* React option - opens full emoji picker */}
+                  <button
+                    title="React"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      setEmojiPickerOpen(true);
+                    }}
+                    className="flex items-center gap-1.5 rounded-xl px-3 py-2 text-sm font-medium text-gray-800 transition-colors hover:bg-gray-100"
+                  >
+                    <Smile className="h-4 w-4" /> React
+                  </button>
+                                    {!isOwn && (
+                    <button
+                      title="Reply"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        onReply(msg);
+                        setOverlayOpen(false);
+                      }}
+                      className="flex items-center gap-1.5 rounded-xl px-3 py-2 text-sm font-medium text-gray-800 transition-colors hover:bg-gray-100"
+                    >
+                      <CornerUpLeft className="h-4 w-4" /> Reply
+                    </button>
+                  )}
+                  {isOwn && (
+                    <>
+                      <button
+                        title="Reply"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          onReply(msg);
+                          setOverlayOpen(false);
+                        }}
+                        className="flex items-center gap-1.5 rounded-xl px-3 py-2 text-sm font-medium text-gray-800 transition-colors hover:bg-gray-100"
+                      >
+                        <CornerUpLeft className="h-4 w-4" /> Reply
+                      </button>
+                      <button
+                        title="Edit"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          startEditing();
+                        }}
+                        className="flex items-center gap-1.5 rounded-xl px-3 py-2 text-sm font-medium text-gray-800 transition-colors hover:bg-gray-100"
+                      >
+                        <Pencil className="h-4 w-4" /> Edit
+                      </button>
+                      <button
+                        title="Delete message"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          onDelete(msg.id);
+                          setOverlayOpen(false);
+                        }}
+                        className="flex items-center gap-1.5 rounded-xl px-3 py-2 text-sm font-medium text-red-600 transition-colors hover:bg-red-50"
+                      >
+                        <Trash2 className="h-4 w-4" /> Delete
+                      </button>
+                    </>
+                  )}
+                </div>
+
+                {/* White reaction pill */}
+                <div
+                  className="flex items-center gap-1 rounded-[30px] bg-white px-3 py-2 animate-reaction-picker"
+                  style={{ boxShadow: "0px 8px 24px rgba(0,0,0,0.18)" }}
+                >
+                  {MESSENGER_REACTIONS.map((emoji, index) => (
                     <button
                       key={emoji}
                       data-emoji={emoji}
-                      onClick={() => {
-                        if (suppressClickRef.current) return;
-                        onReact(msg.id, emoji);
-                        setReactionMenuOpen(false);
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        commitReaction(emoji);
                       }}
-                      className={`rounded-full p-1 text-lg transition-transform duration-150 transform-gpu animate-emoji-pop ${
+                      className={`relative rounded-full p-1 text-2xl leading-none transition-transform duration-100 animate-emoji-pop transform-gpu ${
                         highlightedEmoji === emoji
-                          ? "scale-150 bg-purple-600/30"
-                          : "hover:scale-125"
+                          ? "scale-[1.3] -translate-y-1"
+                          : "hover:scale-[1.3] hover:-translate-y-1"
                       }`}
                       style={{ animationDelay: `${index * 40}ms` }}
                       title={`React with ${emoji}`}
@@ -481,162 +641,133 @@ export const MessageBubble = memo(function MessageBubble({
                   ))}
                   {/* Open full emoji picker */}
                   <button
-                    onClick={() => {
-                      setReactionMenuOpen(false);
+                    onClick={(e) => {
+                      e.stopPropagation();
                       setEmojiPickerOpen(true);
                     }}
-                    className="flex items-center justify-center rounded-full border border-dashed border-zinc-600 p-1 text-xs text-zinc-400 transition-colors hover:border-zinc-400 hover:text-zinc-200"
-                    title="More emojis..."
+                    className="flex items-center justify-center rounded-full border border-gray-200 p-1 text-lg text-gray-600 transition-colors hover:bg-gray-100"
+                    title="More emojis"
                   >
                     <Plus className="h-4 w-4" />
                   </button>
                 </div>
-              )}
-            </div>
-          )}
-        </div>
+              </div>
+            </div>,
+            document.body
+          )
+        : null}
 
-        {/* Reactions */}
-        {groupedReactions.length > 0 && (
-          <div
-            className={`mt-1 flex flex-wrap gap-1 ${
-              isOwn ? "justify-end" : ""
-            }`}
-          >
-            {groupedReactions.map(([emoji, reactions]) => (
-              <button
-                key={emoji}
-                onClick={() => onReact(msg.id, emoji)}
-                className={`flex items-center gap-1 rounded-full border px-2 py-0.5 text-xs transition-colors ${
-                  reactions.some((r) => r.userId === userId)
-                    ? "border-purple-500/50 bg-purple-600/20 text-purple-200"
-                    : "border-zinc-700/60 bg-zinc-800/60 text-zinc-300 hover:bg-zinc-700/60"
-                }`}
-                title={`${reactions.map((r) => r.username).join(", ")}`}
-              >
-                <span>{emoji}</span>
-                <span className="font-medium">{reactions.length}</span>
-              </button>
-            ))}
-          </div>
-        )}
-
-        {/* Full Emoji Picker Modal - portaled to <body> to escape overflow clipping */}
-        {emojiPickerOpen &&
-          (typeof document !== "undefined"
-            ? createPortal(
-                <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/50 p-4">
-                  <div
-                    ref={emojiPickerRef}
-                    className="flex max-h-[88dvh] w-full max-w-sm flex-col rounded-2xl border border-zinc-700 bg-[#150d24] shadow-2xl"
-                    onClick={(e) => e.stopPropagation()}
-                  >
-              {/* Header */}
-              <div className="flex items-center justify-between border-b border-zinc-700 px-4 py-3">
-                <h3 className="font-semibold text-zinc-200">
-                  React with emoji
-                </h3>
-                <button
-                  onClick={() => setEmojiPickerOpen(false)}
-                  className="rounded-lg p-1 text-zinc-400 hover:bg-zinc-700 hover:text-zinc-200"
+      {/* --- Full Emoji Picker Modal (portaled) --- */}
+      {emojiPickerOpen &&
+        (typeof document !== "undefined"
+          ? createPortal(
+              <div className="fixed inset-0 z-[80] flex items-center justify-center bg-black/50 p-4">
+                <div
+                  ref={emojiPickerRef}
+                  className="flex max-h-[88dvh] w-full max-w-sm flex-col rounded-2xl border border-zinc-700 bg-[#150d24] shadow-2xl"
+                  onClick={(e) => e.stopPropagation()}
                 >
-                  <X className="h-5 w-5" />
-                </button>
-              </div>
-
-              {/* Search */}
-              <div className="px-4 py-3">
-                <div className="relative">
-                  <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-zinc-500" />
-                  <input
-                    ref={emojiSearchRef}
-                    type="text"
-                    placeholder="Search emoji..."
-                    value={emojiSearchQuery}
-                    onChange={(e) => setEmojiSearchQuery(e.target.value)}
-                    className="w-full rounded-lg border border-zinc-600 bg-zinc-800 py-2 pl-10 pr-4 text-sm text-zinc-200 placeholder-zinc-500 focus:border-purple-500 focus:outline-none"
-                  />
-                </div>
-              </div>
-
-              {/* Quick Emojis (hidden while searching) */}
-              {!emojiSearchQuery && (
-                <div className="px-4 pb-2">
-                  <div className="flex flex-wrap gap-1">
-                    {QUICK_EMOJIS.map((emoji) => (
-                      <button
-                        key={emoji}
-                        onClick={() => handleSelectEmoji(emoji)}
-                        className="rounded-lg p-2 text-xl transition-colors hover:bg-zinc-700"
-                      >
-                        {emoji}
-                      </button>
-                    ))}
-                  </div>
-                </div>
-              )}
-
-              {/* Category Tabs (hidden while searching) */}
-              {!emojiSearchQuery && (
-                <div className="flex gap-1 overflow-x-auto border-b border-zinc-700 px-4 pb-2">
-                  {EMOJI_CATEGORIES.map((category, index) => (
+                  {/* Header */}
+                  <div className="flex items-center justify-between border-b border-zinc-700 px-4 py-3">
+                    <h3 className="font-semibold text-zinc-200">React with emoji</h3>
                     <button
-                      key={category.name}
-                      onClick={() => setActiveEmojiCategory(index)}
-                      className={`flex shrink-0 items-center gap-1 rounded-lg px-3 py-1.5 text-sm transition-colors ${
-                        activeEmojiCategory === index
-                          ? "bg-purple-600 text-white"
-                          : "text-zinc-400 hover:bg-zinc-700 hover:text-zinc-200"
-                      }`}
+                      onClick={() => setEmojiPickerOpen(false)}
+                      className="rounded-lg p-1 text-zinc-400 hover:bg-zinc-700 hover:text-zinc-200"
                     >
-                      <span>{category.icon}</span>
+                      <X className="h-5 w-5" />
                     </button>
-                  ))}
-                </div>
-              )}
+                  </div>
 
-              {/* Emoji Grid */}
-              <div className="min-h-0 flex-1 overflow-y-auto p-4">
-                {filteredEmojis ? (
-                  filteredEmojis.length > 0 ? (
-                    <div className="grid grid-cols-8 gap-1">
-                      {filteredEmojis.map((emoji) => (
+                  {/* Search */}
+                  <div className="px-4 py-3">
+                    <div className="relative">
+                      <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-zinc-500" />
+                      <input
+                        ref={emojiSearchRef}
+                        type="text"
+                        placeholder="Search emoji..."
+                        value={emojiSearchQuery}
+                        onChange={(e) => setEmojiSearchQuery(e.target.value)}
+                        className="w-full rounded-lg border border-zinc-600 bg-zinc-800 py-2 pl-10 pr-4 text-sm text-zinc-200 placeholder-zinc-500 focus:border-purple-500 focus:outline-none"
+                      />
+                    </div>
+                  </div>
+                  {/* Quick Emojis (hidden while searching) */}
+                  {!emojiSearchQuery && (
+                    <div className="px-4 pb-2">
+                      <div className="flex flex-wrap gap-1">
+                        {QUICK_EMOJIS.map((emoji) => (
+                          <button
+                            key={emoji}
+                            onClick={() => handleSelectEmoji(emoji)}
+                            className="rounded-lg p-2 text-xl transition-colors hover:bg-zinc-700"
+                          >
+                            {emoji}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Category Tabs (hidden while searching) */}
+                  {!emojiSearchQuery && (
+                    <div className="flex gap-1 overflow-x-auto border-b border-zinc-700 px-4 pb-2">
+                      {EMOJI_CATEGORIES.map((category, index) => (
                         <button
-                          key={emoji}
-                          onClick={() => handleSelectEmoji(emoji)}
-                          className="rounded-lg p-2 text-xl transition-colors hover:bg-zinc-700"
+                          key={category.name}
+                          onClick={() => setActiveEmojiCategory(index)}
+                          className={`flex shrink-0 items-center gap-1 rounded-lg px-3 py-1.5 text-sm transition-colors ${
+                            activeEmojiCategory === index
+                              ? "bg-purple-600 text-white"
+                              : "text-zinc-400 hover:bg-zinc-700 hover:text-zinc-200"
+                          }`}
                         >
-                          {emoji}
+                          <span>{category.icon}</span>
+                          <span className="hidden sm:inline">{category.name}</span>
                         </button>
                       ))}
                     </div>
-                  ) : (
-                    <p className="py-8 text-center text-zinc-500">
-                      No emoji found for &quot;{emojiSearchQuery}&quot;
-                    </p>
-                  )
-                ) : (
-                  <div className="grid grid-cols-8 gap-1">
-                    {EMOJI_CATEGORIES[activeEmojiCategory]?.emojis.map(
-                      (emoji) => (
-                        <button
-                          key={emoji}
-                          onClick={() => handleSelectEmoji(emoji)}
-                          className="rounded-lg p-2 text-xl transition-colors hover:bg-zinc-700"
-                        >
-                          {emoji}
-                        </button>
+                  )}
+
+                  {/* Emoji Grid */}
+                  <div className="min-h-0 flex-1 overflow-y-auto p-4">
+                    {filteredEmojis ? (
+                      filteredEmojis.length > 0 ? (
+                        <div className="grid grid-cols-8 gap-1">
+                          {filteredEmojis.map((emoji) => (
+                            <button
+                              key={emoji}
+                              onClick={() => handleSelectEmoji(emoji)}
+                              className="rounded-lg p-2 text-xl transition-colors hover:bg-zinc-700"
+                            >
+                              {emoji}
+                            </button>
+                          ))}
+                        </div>
+                      ) : (
+                        <p className="py-8 text-center text-zinc-500">
+                          No emoji found for &quot;{emojiSearchQuery}&quot;
+                        </p>
                       )
+                    ) : (
+                      <div className="grid grid-cols-8 gap-1">
+                        {EMOJI_CATEGORIES[activeEmojiCategory]?.emojis.map((emoji) => (
+                          <button
+                            key={emoji}
+                            onClick={() => handleSelectEmoji(emoji)}
+                            className="rounded-lg p-2 text-xl transition-colors hover:bg-zinc-700"
+                          >
+                            {emoji}
+                          </button>
+                        ))}
+                      </div>
                     )}
                   </div>
-                )}
-              </div>
                 </div>
               </div>,
               document.body
             )
           : null)}
-      </div>
     </div>
   );
 },

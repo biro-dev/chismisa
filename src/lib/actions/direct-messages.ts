@@ -426,6 +426,10 @@ export async function reactToDirectMessageAction(
     if (existing) {
       await db.directMessageReaction.delete({ where: { id: existing.id } });
     } else {
+      // Different emoji: replace the user's previous reaction (Messenger-style)
+      await db.directMessageReaction.deleteMany({
+        where: { messageId, userId: session.userId },
+      });
       await db.directMessageReaction.create({
         data: { messageId, userId: session.userId, emoji },
       });

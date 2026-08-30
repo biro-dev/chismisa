@@ -275,6 +275,10 @@ export async function reactToMessageAction(
     if (existing) {
       await db.messageReaction.delete({ where: { id: existing.id } });
     } else {
+      // Different emoji: replace the user's previous reaction (Messenger-style)
+      await db.messageReaction.deleteMany({
+        where: { messageId, userId: session.userId },
+      });
       await db.messageReaction.create({
         data: {
           messageId,

@@ -590,10 +590,11 @@ export function useChat({
               reactions: m.reactions.filter((r) => r.id !== existing.id),
             };
           }
+          // Different emoji: replace the user's previous reaction (Messenger-style)
           return {
             ...m,
             reactions: [
-              ...m.reactions,
+              ...m.reactions.filter((r) => r.userId !== userId),
               {
                 id: `temp-${Date.now()}`,
                 emoji,
