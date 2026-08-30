@@ -211,7 +211,7 @@ body {
 /* Performance: contain layout/paint for the bubble content so changes
    inside a bubble don't trigger layout/paint outside of it. */
 .msg-bubble-content {
-  contain: content;
+  contain: layout style;
 }
 
 /* Highlight flash for a message jumped to via search results */

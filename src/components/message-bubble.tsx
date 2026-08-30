@@ -319,12 +319,16 @@ export const MessageBubble = memo(function MessageBubble({
           {isOwn ? "You" : msg.username}
         </p>
         <div
-          className={`msg-bubble-content rounded-2xl px-4 py-2.5 text-sm ${
+          className={`msg-bubble-content relative rounded-2xl px-4 pt-2.5 text-sm ${
             msg.deletedAt
-              ? "border border-dashed border-zinc-700 italic text-zinc-500"
+              ? "border border-dashed border-zinc-700 py-2.5 italic text-zinc-500"
               : isOwn
-              ? "rounded-br-sm bg-gradient-to-r from-purple-600 to-fuchsia-600 text-white"
-              : "rounded-bl-sm bg-zinc-800 text-zinc-100"
+              ? `rounded-br-sm bg-gradient-to-r from-purple-600 to-fuchsia-600 text-white ${
+                  isEditing ? "pb-3" : "pb-9"
+                }`
+              : `rounded-bl-sm bg-zinc-800 text-zinc-100 ${
+                  isEditing ? "pb-3" : "pb-9"
+                }`
           }`}
         >
           {/* Reply indicator */}
@@ -386,6 +390,102 @@ export const MessageBubble = memo(function MessageBubble({
           ) : (
             <p className="whitespace-pre-wrap break-words">{msg.content}</p>
           )}
+
+          {/* Action buttons - overlay inside bubble bottom-right (out of flow, so bubbles shrink-to-fit) */}
+          {!msg.deletedAt && !isEditing && (
+            <div className="absolute bottom-1 right-1 z-10 flex items-center gap-0.5 opacity-100 transition-opacity md:opacity-0 md:group-hover:opacity-100">
+              {/* Reply button */}
+              {!msg.deletedAt && (
+                <button
+                  onClick={() => onReply(msg)}
+                  className={`rounded-lg p-1.5 transition-colors ${
+                    isOwn
+                      ? "text-white/80 hover:bg-white/20 hover:text-white"
+                      : "text-zinc-400 hover:bg-zinc-700 hover:text-purple-300"
+                  }`}
+                  title="Reply"
+                >
+                  <CornerUpLeft className="h-3.5 w-3.5" />
+                </button>
+              )}
+              {/* Edit button - only on own non-deleted messages */}
+              {isOwn && !msg.deletedAt && (
+                <button
+                  onClick={startEditing}
+                  className="rounded-lg p-1.5 text-white/80 transition-colors hover:bg-white/20 hover:text-sky-300"
+                  title="Edit message"
+                >
+                  <Pencil className="h-3.5 w-3.5" />
+                </button>
+              )}
+              {/* Delete button - only on own messages */}
+              {isOwn && !msg.deletedAt && (
+                <button
+                  onClick={() => onDelete(msg.id)}
+                  className="rounded-lg p-1.5 text-white/80 transition-colors hover:bg-white/20 hover:text-red-300"
+                  title="Delete message"
+                >
+                  <Trash2 className="h-3.5 w-3.5" />
+                </button>
+              )}
+              {/* Reaction button - hold and slide on touch, click on desktop */}
+              <button
+                onPointerDown={handlePointerDown}
+                onPointerMove={handlePointerMove}
+                onPointerUp={handlePointerUp}
+                onPointerCancel={handlePointerCancel}
+                onClick={handleReactButtonClick}
+                className={`relative touch-none select-none rounded-lg p-1.5 transition-colors ${
+                  isOwn
+                    ? "text-white/80 hover:bg-white/20 hover:text-amber-300"
+                    : "text-zinc-400 hover:bg-zinc-700 hover:text-amber-300"
+                }`}
+                title="React"
+              >
+                <Smile className="h-3.5 w-3.5" />
+              </button>
+
+              {/* Reaction quick actions - appears above the buttons (Messenger-style) */}
+              {reactionMenuOpen && (
+                <div
+                  ref={pickerRef}
+                  className="absolute bottom-full mb-1 z-30 flex gap-1 rounded-full border border-zinc-700 bg-[#150d24] px-2 py-1.5 shadow-xl animate-reaction-picker transform-gpu"
+                >
+                  {QUICK_EMOJIS.slice(0, 6).map((emoji, index) => (
+                    <button
+                      key={emoji}
+                      data-emoji={emoji}
+                      onClick={() => {
+                        if (suppressClickRef.current) return;
+                        onReact(msg.id, emoji);
+                        setReactionMenuOpen(false);
+                      }}
+                      className={`rounded-full p-1 text-lg transition-transform duration-150 transform-gpu animate-emoji-pop ${
+                        highlightedEmoji === emoji
+                          ? "scale-150 bg-purple-600/30"
+                          : "hover:scale-125"
+                      }`}
+                      style={{ animationDelay: `${index * 40}ms` }}
+                      title={`React with ${emoji}`}
+                    >
+                      {emoji}
+                    </button>
+                  ))}
+                  {/* Open full emoji picker */}
+                  <button
+                    onClick={() => {
+                      setReactionMenuOpen(false);
+                      setEmojiPickerOpen(true);
+                    }}
+                    className="flex items-center justify-center rounded-full border border-dashed border-zinc-600 p-1 text-xs text-zinc-400 transition-colors hover:border-zinc-400 hover:text-zinc-200"
+                    title="More emojis..."
+                  >
+                    <Plus className="h-4 w-4" />
+                  </button>
+                </div>
+              )}
+            </div>
+          )}
         </div>
 
         {/* Reactions */}
@@ -412,96 +512,6 @@ export const MessageBubble = memo(function MessageBubble({
             ))}
           </div>
         )}
-
-        {/* Action buttons - always visible on mobile, hover-only on desktop */}
-        <div
-          className={`relative mt-1 flex items-center gap-1 opacity-100 transition-opacity md:opacity-0 md:group-hover:opacity-100 ${
-            isOwn ? "justify-end" : ""
-          }`}
-        >
-          {/* Reply button */}
-          {!msg.deletedAt && (
-            <button
-              onClick={() => onReply(msg)}
-              className="rounded-lg p-1.5 text-zinc-500 transition-colors hover:bg-zinc-800 hover:text-purple-400"
-              title="Reply"
-            >
-              <CornerUpLeft className="h-3.5 w-3.5" />
-            </button>
-          )}
-          {/* Edit button — only on own non-deleted messages, hidden while editing */}
-          {isOwn && !msg.deletedAt && !isEditing && (
-            <button
-              onClick={startEditing}
-              className="rounded-lg p-1.5 text-zinc-500 transition-colors hover:bg-zinc-800 hover:text-sky-400"
-              title="Edit message"
-            >
-              <Pencil className="h-3.5 w-3.5" />
-            </button>
-          )}
-          {/* Delete button — only on own messages that aren't already deleted */}
-          {isOwn && !msg.deletedAt && (
-            <button
-              onClick={() => onDelete(msg.id)}
-              className="rounded-lg p-1.5 text-zinc-500 transition-colors hover:bg-zinc-800 hover:text-red-400"
-              title="Delete message"
-            >
-              <Trash2 className="h-3.5 w-3.5" />
-            </button>
-          )}
-          {/* Reaction button - hold and slide on touch, click on desktop */}
-          <button
-            onPointerDown={handlePointerDown}
-            onPointerMove={handlePointerMove}
-            onPointerUp={handlePointerUp}
-            onPointerCancel={handlePointerCancel}
-            onClick={handleReactButtonClick}
-            className="relative touch-none select-none rounded-lg p-1.5 text-zinc-500 transition-colors hover:bg-zinc-800 hover:text-amber-400"
-            title="React"
-          >
-            <Smile className="h-3.5 w-3.5" />
-          </button>
-
-          {/* Reaction quick actions - appears above the buttons (Messenger-style) */}
-          {reactionMenuOpen && (
-            <div
-              ref={pickerRef}
-              className="absolute bottom-full mb-1.5 z-30 flex gap-1 rounded-full border border-zinc-700 bg-[#150d24] px-2 py-1.5 shadow-xl animate-reaction-picker transform-gpu"
-            >
-              {QUICK_EMOJIS.slice(0, 6).map((emoji, index) => (
-                <button
-                  key={emoji}
-                  data-emoji={emoji}
-                  onClick={() => {
-                    if (suppressClickRef.current) return;
-                    onReact(msg.id, emoji);
-                    setReactionMenuOpen(false);
-                  }}
-                  className={`rounded-full p-1 text-lg transition-transform duration-150 transform-gpu animate-emoji-pop ${
-                    highlightedEmoji === emoji
-                      ? "scale-150 bg-purple-600/30"
-                      : "hover:scale-125"
-                  }`}
-                  style={{ animationDelay: `${index * 40}ms` }}
-                  title={`React with ${emoji}`}
-                >
-                  {emoji}
-                </button>
-              ))}
-              {/* Open full emoji picker */}
-              <button
-                onClick={() => {
-                  setReactionMenuOpen(false);
-                  setEmojiPickerOpen(true);
-                }}
-                className="flex items-center justify-center rounded-full border border-dashed border-zinc-600 p-1 text-xs text-zinc-400 transition-colors hover:border-zinc-400 hover:text-zinc-200"
-                title="More emojis..."
-              >
-                <Plus className="h-4 w-4" />
-              </button>
-            </div>
-          )}
-        </div>
 
         {/* Full Emoji Picker Modal - portaled to <body> to escape overflow clipping */}
         {emojiPickerOpen &&
