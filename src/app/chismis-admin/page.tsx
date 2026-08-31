@@ -1,4 +1,4 @@
-import { cookies } from "next/headers";
+import { isAdminCookieValid } from "@/lib/admin-auth";
 import { AdminPanel } from "@/components/admin-panel";
 import { AdminLogin } from "@/components/admin-login";
 
@@ -6,29 +6,9 @@ export const metadata = {
   title: "Chismisa Admin",
 };
 
-async function verifyAdminAccess(): Promise<boolean> {
-  const cookieStore = await cookies();
-  const adminSecret = cookieStore.get("admin_secret")?.value;
-  
-  if (!adminSecret) {
-    return false;
-  }
-
-  const masterSecret = process.env.ADMIN_SECRET;
-  if (!masterSecret) {
-    return false;
-  }
-
-  const { timingSafeEqual } = await import("crypto");
-  const a = Buffer.from(adminSecret);
-  const b = Buffer.from(masterSecret);
-  if (a.length !== b.length) return false;
-  return timingSafeEqual(a, b);
-}
-
 export default async function AdminPage() {
-  const isAuthorized = await verifyAdminAccess();
-  
+  const isAuthorized = await isAdminCookieValid();
+
   if (!isAuthorized) {
     return <AdminLogin />;
   }

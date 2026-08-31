@@ -13,16 +13,31 @@ const dbMock = vi.hoisted(() => ({
   message: {
     count: vi.fn(),
   },
+  directMessage: {
+    count: vi.fn(),
+  },
+  conversation: {
+    count: vi.fn(),
+    findMany: vi.fn(),
+    findUnique: vi.fn(),
+  },
   groupMember: {
     delete: vi.fn(),
   },
 }));
 
+const rateLimitMock = vi.hoisted(() => ({
+  checkRateLimit: vi.fn(),
+}));
+
 vi.mock("@/lib/db", () => ({ db: dbMock }));
+vi.mock("@/lib/rate-limit", () => rateLimitMock);
 
 import {
   deleteGroupAction,
   getAdminStats,
+  getDmConversationsAction,
+  getDmMessagesAction,
   getGroupMembersAction,
   getGroupMessagesAction,
   removeMemberAction,
@@ -33,6 +48,7 @@ const SECRET = "master-secret-123";
 beforeEach(() => {
   vi.clearAllMocks();
   vi.stubEnv("ADMIN_SECRET", SECRET);
+  rateLimitMock.checkRateLimit.mockResolvedValue(null);
 });
 
 afterEach(() => {
@@ -78,6 +94,8 @@ describe("getAdminStats", () => {
     dbMock.user.count.mockResolvedValue(12);
     dbMock.group.count.mockResolvedValue(3);
     dbMock.message.count.mockResolvedValue(456);
+    dbMock.directMessage.count.mockResolvedValue(789);
+    dbMock.conversation.count.mockResolvedValue(21);
     dbMock.group.findMany.mockResolvedValue([
       {
         id: "group_1",
@@ -94,6 +112,8 @@ describe("getAdminStats", () => {
       userCount: 12,
       groupCount: 3,
       messageCount: 456,
+      dmCount: 789,
+      conversationCount: 21,
       groups: [
         {
           id: "group_1",
@@ -281,6 +301,196 @@ describe("getGroupMessagesAction", () => {
   it("returns null for a missing group", async () => {
     dbMock.group.findUnique.mockResolvedValue(null);
     expect(await getGroupMessagesAction(SECRET, "nope")).toBeNull();
+  });
+});
+
+describe("getDmConversationsAction", () => {
+  it("rejects a wrong secret", async () => {
+    expect(await getDmConversationsAction("wrong-secret-value")).toBeNull();
+    expect(dbMock.conversation.findMany).not.toHaveBeenCalled();
+  });
+
+  it("lists conversations with members, counts and previews, newest activity first", async () => {
+    dbMock.conversation.findMany.mockResolvedValue([
+      {
+        id: "conv_1",
+        createdAt: new Date("2026-01-01T00:00:00Z"),
+        members: [
+          { user: { id: "user_1", username: "chismosa" } },
+          { user: { id: "user_2", username: "marites" } },
+        ],
+        _count: { messages: 2 },
+        messages: [
+          {
+            content: "hello there",
+            createdAt: new Date("2026-01-01T00:01:00Z"),
+            senderId: "user_2",
+            deletedAt: null,
+          },
+        ],
+      },
+      {
+        id: "conv_2",
+        createdAt: new Date("2026-01-02T00:00:00Z"),
+        members: [
+          { user: { id: "user_3", username: "maria" } },
+          { user: { id: "user_4", username: "juan" } },
+        ],
+        _count: { messages: 0 },
+        messages: [],
+      },
+    ]);
+
+    const result = await getDmConversationsAction(SECRET);
+    // conv_2's last activity (its createdAt, no messages) is newer than
+    // conv_1's last message (Jan 1st 00:01)
+    expect(result!.map((c) => c.id)).toEqual(["conv_2", "conv_1"]);
+
+    expect(result![0]).toMatchObject({
+      id: "conv_2",
+      members: [
+        { id: "user_3", username: "maria" },
+        { id: "user_4", username: "juan" },
+      ],
+      messageCount: 0,
+      lastMessage: null,
+    });
+    expect(result![1]).toMatchObject({
+      id: "conv_1",
+      messageCount: 2,
+      lastMessage: {
+        content: "hello there",
+        createdAt: "2026-01-01T00:01:00.000Z",
+        senderId: "user_2",
+      },
+    });
+  });
+
+  it("hides unsent message content in previews", async () => {
+    dbMock.conversation.findMany.mockResolvedValue([
+      {
+        id: "conv_1",
+        createdAt: new Date("2026-01-01T00:00:00Z"),
+        members: [
+          { user: { id: "user_1", username: "chismosa" } },
+          { user: { id: "user_2", username: "marites" } },
+        ],
+        _count: { messages: 1 },
+        messages: [
+          {
+            content: "",
+            createdAt: new Date("2026-01-01T00:01:00Z"),
+            senderId: "user_1",
+            deletedAt: new Date("2026-01-01T00:02:00Z"),
+          },
+        ],
+      },
+    ]);
+
+    const result = await getDmConversationsAction(SECRET);
+    expect(result![0].lastMessage!.content).toBe("Message unsent");
+  });
+});
+
+describe("getDmMessagesAction", () => {
+  const messages = [
+    {
+      id: "dmsg_1",
+      content: "hello",
+      senderId: "user_2",
+      deletedAt: null,
+      createdAt: new Date("2026-01-01T00:00:00Z"),
+      sender: { id: "user_2", username: "marites" },
+      replyTo: null,
+      reactions: [],
+    },
+    {
+      id: "dmsg_2",
+      content: "hi back",
+      senderId: "user_1",
+      deletedAt: null,
+      createdAt: new Date("2026-01-01T00:01:00Z"),
+      sender: { id: "user_1", username: "chismosa" },
+      replyTo: {
+        id: "dmsg_1",
+        content: "hello",
+        sender: { username: "marites" },
+      },
+      reactions: [
+        {
+          id: "r1",
+          emoji: "❤️",
+          userId: "user_2",
+          user: { id: "user_2", username: "marites" },
+        },
+      ],
+    },
+  ];
+
+  function mockConversation() {
+    dbMock.conversation.findUnique.mockResolvedValue({
+      id: "conv_1",
+      members: [
+        { user: { id: "user_1", username: "chismosa" } },
+        { user: { id: "user_2", username: "marites" } },
+      ],
+      messages,
+    });
+  }
+
+  it("rejects a wrong secret", async () => {
+    expect(await getDmMessagesAction("wrong-secret-value", "conv_1")).toBeNull();
+    expect(dbMock.conversation.findUnique).not.toHaveBeenCalled();
+  });
+
+  it("maps messages with members, replies and reactions", async () => {
+    mockConversation();
+
+    const result = await getDmMessagesAction(SECRET, "conv_1");
+    expect(result!.id).toBe("conv_1");
+    expect(result!.members).toEqual([
+      { id: "user_1", username: "chismosa" },
+      { id: "user_2", username: "marites" },
+    ]);
+    expect(result!.messages[0]).toMatchObject({
+      id: "dmsg_1",
+      username: "marites",
+      replyTo: null,
+    });
+    expect(result!.messages[1]).toMatchObject({
+      id: "dmsg_2",
+      username: "chismosa",
+      replyTo: { id: "dmsg_1", content: "hello", username: "marites" },
+      reactions: [{ emoji: "❤️", username: "marites" }],
+    });
+    // Dates must be serialized as ISO strings
+    expect(result!.messages[0].createdAt).toBe("2026-01-01T00:00:00.000Z");
+  });
+
+  it("passes the since filter as a createdAt cursor", async () => {
+    mockConversation();
+    const since = "2026-01-01T00:00:00.000Z";
+
+    await getDmMessagesAction(SECRET, "conv_1", since);
+
+    const call = dbMock.conversation.findUnique.mock.calls[0][0];
+    expect(call.include.messages.where).toEqual({
+      createdAt: { gt: new Date(since) },
+    });
+  });
+
+  it("omits the where clause when since is not provided", async () => {
+    mockConversation();
+
+    await getDmMessagesAction(SECRET, "conv_1");
+
+    const call = dbMock.conversation.findUnique.mock.calls[0][0];
+    expect(call.include.messages.where).toEqual({});
+  });
+
+  it("returns null for a missing conversation", async () => {
+    dbMock.conversation.findUnique.mockResolvedValue(null);
+    expect(await getDmMessagesAction(SECRET, "nope")).toBeNull();
   });
 });
 

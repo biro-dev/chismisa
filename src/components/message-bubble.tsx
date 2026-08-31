@@ -157,12 +157,29 @@ export const MessageBubble = memo(function MessageBubble({
     };
   }, [overlayOpen, emojiPickerOpen]);
 
-  // Dismiss the reaction overlay if the chat scrolls underneath it
+  // Dismiss the reaction overlay if the chat scrolls underneath it or the
+  // window resizes, but ignore scrolls originating inside the overlay itself
+  // (e.g. the emoji picker's scrollable grid).
   useEffect(() => {
     if (!overlayOpen) return;
-    const onScroll = () => setOverlayOpen(false);
+    const dismiss = () => setOverlayOpen(false);
+    const onScroll = (e: Event) => {
+      const target = e.target as Node | null;
+      if (
+        target &&
+        (pickerRef.current?.contains(target) ||
+          emojiPickerRef.current?.contains(target))
+      ) {
+        return;
+      }
+      dismiss();
+    };
     document.addEventListener("scroll", onScroll, true);
-    return () => document.removeEventListener("scroll", onScroll, true);
+    window.addEventListener("resize", dismiss);
+    return () => {
+      document.removeEventListener("scroll", onScroll, true);
+      window.removeEventListener("resize", dismiss);
+    };
   }, [overlayOpen]);
 
   const clearPressTimer = useCallback(() => {
@@ -181,9 +198,12 @@ export const MessageBubble = memo(function MessageBubble({
     if (!el) return;
     const rect = el.getBoundingClientRect();
     const below = rect.top < 300;
-    // Clamp so the pill (half-width ~170px) never exits the viewport
+    // Clamp so the pill (half-width ~170px) never exits the viewport. On very
+    // narrow viewports (<340px) the clamp bounds conflict — center instead.
     const vw = typeof window !== "undefined" ? window.innerWidth : 360;
-    const x = Math.max(170, Math.min(vw - 170, Math.round(rect.left + rect.width / 2)));
+    const centerX = Math.round(rect.left + rect.width / 2);
+    const x =
+      vw < 340 ? Math.round(vw / 2) : Math.max(170, Math.min(vw - 170, centerX));
     setOverlayAnchor({
       x,
       y: Math.round(rect.top),
@@ -211,9 +231,12 @@ export const MessageBubble = memo(function MessageBubble({
       const isTouch = e.pointerType !== "mouse";
       suppressClickRef.current = false;
       startPosRef.current = { x: e.clientX, y: e.clientY };
-
+      gestureModeRef.current = "pending";
+      // Capture the pointer for touch so we keep receiving pointerup/cancel
+      // even when the finger leaves the bubble mid-gesture. (Mouse is NOT
+      // captured: a desktop drag-off-release shouldn't synthesize a click —
+      // the window-level safety net below resets the mode instead.)
       if (isTouch) {
-        gestureModeRef.current = "pending";
         e.currentTarget.setPointerCapture(e.pointerId);
         // Long-press threshold
         pressTimerRef.current = setTimeout(() => {
@@ -222,9 +245,6 @@ export const MessageBubble = memo(function MessageBubble({
           triggerHaptic(ImpactStyle.Light);
           openOverlay();
         }, LONG_PRESS_MS);
-      } else {
-        // Desktop: single click opens the overlay (with click suppression after gesture)
-        gestureModeRef.current = "pending";
       }
     },
     [msg.deletedAt, isEditing, openOverlay]
@@ -315,6 +335,27 @@ export const MessageBubble = memo(function MessageBubble({
     gestureModeRef.current = "idle";
     setIsSwiping(false);
     setSwipeX(0);
+  }, [clearPressTimer]);
+
+  // Safety net: if a mouse gesture ends outside the bubble (drag off, release
+  // elsewhere), no pointerup reaches the bubble's handlers and a stale
+  // "pending"/"swipe" mode would swallow the next click. Reset on any
+  // window-level pointer end that the bubble handlers didn't already handle.
+  useEffect(() => {
+    const onWindowPointerEnd = () => {
+      if (gestureModeRef.current === "idle") return;
+      clearPressTimer();
+      gestureModeRef.current = "idle";
+      startPosRef.current = null;
+      setIsSwiping(false);
+      setSwipeX(0);
+    };
+    window.addEventListener("pointerup", onWindowPointerEnd);
+    window.addEventListener("pointercancel", onWindowPointerEnd);
+    return () => {
+      window.removeEventListener("pointerup", onWindowPointerEnd);
+      window.removeEventListener("pointercancel", onWindowPointerEnd);
+    };
   }, [clearPressTimer]);
 
   // Desktop: click toggles overlay (suppressed after a swipe/long-press)
@@ -458,7 +499,9 @@ export const MessageBubble = memo(function MessageBubble({
               <CornerUpLeft className="mt-0.5 h-3 w-3 shrink-0" />
               <div className="min-w-0">
                 <p className="font-medium">Replying to {msg.replyTo.username}</p>
-                <p className="truncate opacity-80">{msg.replyTo.content}</p>
+                <p className="truncate opacity-80">
+                  {msg.replyTo.content || "Original message was deleted"}
+                </p>
               </div>
             </div>
           )}
@@ -522,7 +565,9 @@ export const MessageBubble = memo(function MessageBubble({
           {!msg.deletedAt && groupedReactions.length > 0 && (
             <div
               onPointerDown={(e) => e.stopPropagation()}
-              className="absolute bottom-[-10px] left-2 z-10 flex"
+              className={`absolute bottom-[-10px] z-10 flex ${
+                isOwn ? "right-2" : "left-2"
+              }`}
             >
               {groupedReactions.slice(0, 3).map(([emoji, reactions], i) => (
                 <button

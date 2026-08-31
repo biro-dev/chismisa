@@ -1,10 +1,11 @@
 "use client";
 
-import { useState, useEffect, useRef } from "react";
+import { useCallback, useState, useEffect, useRef } from "react";
 import {
   Shield,
   Users,
   MessageSquare,
+  MessageCircle,
   Hash,
   Trash2,
   ArrowLeft,
@@ -23,14 +24,19 @@ import {
   getGroupMembersAction,
   removeMemberAction,
   getGroupMessagesAction,
+  getDmConversationsAction,
+  getDmMessagesAction,
   loginAdminAction,
   logoutAdminAction,
 } from "@/lib/actions/admin";
+import { AdminLogin } from "@/components/admin-login";
 
 type AdminStats = {
   userCount: number;
   groupCount: number;
   messageCount: number;
+  dmCount: number;
+  conversationCount: number;
   groups: {
     id: string;
     name: string;
@@ -78,6 +84,121 @@ type GroupDetails = {
   members: GroupMember[];
 };
 
+type AdminDmConversation = {
+  id: string;
+  members: { id: string; username: string }[];
+  messageCount: number;
+  lastMessage: {
+    content: string;
+    createdAt: string;
+    senderId: string;
+  } | null;
+  lastActivityAt: string;
+};
+
+type AdminDmMessages = {
+  id: string;
+  members: { id: string; username: string }[];
+  messages: {
+    id: string;
+    content: string;
+    userId: string;
+    username: string;
+    deletedAt: string | null;
+    createdAt: string;
+    replyTo: { id: string; content: string; username: string } | null;
+    reactions: {
+      id: string;
+      emoji: string;
+      userId: string;
+      username: string;
+    }[];
+  }[];
+};
+
+/** Shape shared by admin group messages and admin DM messages. */
+type AdminMessageShape = {
+  id: string;
+  content: string;
+  username: string;
+  createdAt: string;
+  deletedAt?: string | null;
+  replyTo: { id: string; content: string; username: string } | null;
+  reactions: {
+    id: string;
+    emoji: string;
+    userId: string;
+    username: string;
+  }[];
+};
+
+/** Spectator message bubble used by both the group and DM monitoring views. */
+function AdminMessageItem({ msg }: { msg: AdminMessageShape }) {
+  const grouped = new Map<string, AdminMessageShape["reactions"]>();
+  for (const r of msg.reactions || []) {
+    const existing = grouped.get(r.emoji) || [];
+    existing.push(r);
+    grouped.set(r.emoji, existing);
+  }
+  // Group messages don't carry deletedAt, but deleted group messages are
+  // stored with empty content — treat that as unsent too.
+  const isDeleted = Boolean(msg.deletedAt) || msg.content === "";
+
+  return (
+    <div className="flex justify-start">
+      <div className="max-w-[85%] items-start sm:max-w-[70%]">
+        <p className="mb-1 text-xs font-medium text-red-400">{msg.username}</p>
+        <div className="rounded-2xl rounded-bl-sm bg-zinc-800 px-4 py-2.5 text-sm text-zinc-100">
+          {/* Reply indicator */}
+          {msg.replyTo && (
+            <div className="mb-2 flex items-start gap-1.5 border-l-2 border-purple-400/60 pl-2 text-xs text-zinc-400">
+              <CornerUpLeft className="mt-0.5 h-3 w-3 shrink-0" />
+              <div className="min-w-0">
+                <p className="font-medium text-purple-300">
+                  Replying to {msg.replyTo.username}
+                </p>
+                <p className="truncate opacity-80">
+                  {msg.replyTo.content || "Original message was deleted"}
+                </p>
+              </div>
+            </div>
+          )}
+          {isDeleted ? (
+            <p className="italic text-zinc-500">Message unsent</p>
+          ) : (
+            <p className="whitespace-pre-wrap break-words">{msg.content}</p>
+          )}
+        </div>
+
+        {/* Reactions */}
+        {grouped.size > 0 && (
+          <div className="mt-1 flex flex-wrap gap-1">
+            {Array.from(grouped.entries()).map(([emoji, reactions]) => (
+              <span
+                key={emoji}
+                className="flex items-center gap-1 rounded-full border border-zinc-700/60 bg-zinc-800/60 px-2 py-0.5 text-xs text-zinc-300"
+                title={`${reactions.map((r) => r.username).join(", ")}`}
+              >
+                <span>{emoji}</span>
+                <span className="font-medium">{reactions.length}</span>
+              </span>
+            ))}
+          </div>
+        )}
+
+        <p className="mt-1 text-[10px] text-zinc-600">
+          {new Date(msg.createdAt).toLocaleString([], {
+            month: "short",
+            day: "numeric",
+            hour: "numeric",
+            minute: "2-digit",
+          })}
+        </p>
+      </div>
+    </div>
+  );
+}
+
 export function AdminPanel() {
   const router = useRouter();
   const [isReady, setIsReady] = useState(false);
@@ -86,6 +207,21 @@ export function AdminPanel() {
   const [loading, setLoading] = useState(false);
   const [deleting, setDeleting] = useState<string | null>(null);
   const [sidebarOpen, setSidebarOpen] = useState(false);
+
+  // Inline login fallback (cookie valid but this tab has no stored secret)
+  const [showLogin, setShowLogin] = useState(false);
+
+  // Sidebar tab: group monitoring vs direct-message monitoring
+  const [viewMode, setViewMode] = useState<"groups" | "dms">("groups");
+  const [dmList, setDmList] = useState<AdminDmConversation[] | null>(null);
+  const [dmListLoading, setDmListLoading] = useState(false);
+
+  // Selected DM view
+  const [selectedDm, setSelectedDm] = useState<string | null>(null);
+  const [dmMessages, setDmMessages] = useState<AdminDmMessages | null>(null);
+  const [dmLoading, setDmLoading] = useState(false);
+  const [dmError, setDmError] = useState("");
+  const lastDmMessageTimeRef = useRef<string | null>(null);
 
   // Selected group view
   const [selectedGroup, setSelectedGroup] = useState<string | null>(null);
@@ -111,27 +247,32 @@ export function AdminPanel() {
     const secret = sessionStorage.getItem("admin_secret") || "";
     secretRef.current = secret;
     if (!secret) {
-      router.replace("/chismis-admin");
+      // The cookie may still be valid (e.g. the admin opened a new tab,
+      // where sessionStorage starts empty). Clear the cookie and show the
+      // login form inline — navigating to /chismis-admin would just render
+      // this panel again and spin forever.
+      sessionStorage.removeItem("admin_secret");
+      logoutAdminAction()
+        .catch(() => {})
+        .finally(() => setShowLogin(true));
       return;
     }
     loginAdminAction(secret)
       .then((result) => {
         if (result.error) {
           sessionStorage.removeItem("admin_secret");
-          router.replace("/chismis-admin");
+          setShowLogin(true);
         } else {
           setIsReady(true);
         }
       })
-      .catch(() => {
-        router.replace("/chismis-admin");
-      });
-  }, [router]);
+      .catch(() => setShowLogin(true));
+  }, []);
 
   const handleLogout = async () => {
     await logoutAdminAction();
     sessionStorage.removeItem("admin_secret");
-    router.replace("/chismis-admin");
+    setShowLogin(true);
   };
 
   const refreshStats = async () => {
@@ -262,12 +403,108 @@ export function AdminPanel() {
     };
   }, [selectedGroup]);
 
+  // ─── Direct messages (read-only monitoring) ────────────────────────────────
+
+  const loadDmConversations = useCallback(async () => {
+    setDmListLoading(true);
+    try {
+      const list = await getDmConversationsAction(secretRef.current);
+      setDmList(list ?? []);
+    } catch (err) {
+      console.error("Load DM conversations error:", err);
+      setDmList([]);
+    } finally {
+      setDmListLoading(false);
+    }
+  }, []);
+
+  const loadDmMessages = useCallback(async (conversationId: string) => {
+    setSelectedDm(conversationId);
+    setDmLoading(true);
+    setDmError("");
+    lastDmMessageTimeRef.current = null;
+    try {
+      const data = await getDmMessagesAction(secretRef.current, conversationId);
+      if (data) {
+        setDmMessages(data);
+        if (data.messages.length > 0) {
+          lastDmMessageTimeRef.current =
+            data.messages[data.messages.length - 1].createdAt;
+        }
+      } else {
+        setDmMessages(null);
+        setDmError("Failed to load messages.");
+      }
+    } catch (err) {
+      console.error("Load DM messages error:", err);
+      setDmMessages(null);
+      setDmError("Failed to load messages. Please try again.");
+    } finally {
+      setDmLoading(false);
+    }
+  }, []);
+
+  // Incremental DM polling — only fetches messages newer than the last known
+  // one. Pauses when the tab is hidden.
+  useEffect(() => {
+    if (!selectedDm) return;
+
+    let interval: ReturnType<typeof setInterval> | null = null;
+
+    const poll = async () => {
+      if (document.hidden) return;
+      try {
+        const since = lastDmMessageTimeRef.current || undefined;
+        const data = await getDmMessagesAction(
+          secretRef.current,
+          selectedDm,
+          since
+        );
+        if (data) {
+          setDmMessages((prev) => {
+            if (!prev) return data;
+            if (data.messages.length === 0) return prev;
+            const existingIds = new Set(prev.messages.map((m) => m.id));
+            const newMsgs = data.messages.filter(
+              (m) => !existingIds.has(m.id)
+            );
+            if (newMsgs.length === 0) return prev;
+            return {
+              ...prev,
+              messages: [...prev.messages, ...newMsgs],
+            };
+          });
+          if (data.messages.length > 0) {
+            lastDmMessageTimeRef.current =
+              data.messages[data.messages.length - 1].createdAt;
+          }
+        }
+      } catch (err) {
+        console.error("Poll DM messages error:", err);
+      }
+    };
+
+    poll();
+    interval = setInterval(poll, 3000);
+
+    // Resume polling immediately when the tab becomes visible again
+    const onVisibility = () => {
+      if (!document.hidden) poll();
+    };
+    document.addEventListener("visibilitychange", onVisibility);
+
+    return () => {
+      if (interval) clearInterval(interval);
+      document.removeEventListener("visibilitychange", onVisibility);
+    };
+  }, [selectedDm]);
+
   // Smart auto-scroll — only scrolls to bottom if the user is already near it
   useEffect(() => {
     if (isNearBottomRef.current) {
       messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
     }
-  }, [groupMessages?.messages.length]);
+  }, [groupMessages?.messages.length, dmMessages?.messages.length]);
 
   const handleViewMembers = async (groupId: string) => {
     setMembersLoading(true);
@@ -310,23 +547,9 @@ export function AdminPanel() {
     }
   };
 
-  // Group reactions by emoji for display
-  const groupReactions = (
-    reactions: {
-      id: string;
-      emoji: string;
-      userId: string;
-      username: string;
-    }[]
-  ) => {
-    const grouped = new Map<string, typeof reactions>();
-    for (const r of reactions) {
-      const existing = grouped.get(r.emoji) || [];
-      existing.push(r);
-      grouped.set(r.emoji, existing);
-    }
-    return Array.from(grouped.entries());
-  };
+  if (showLogin) {
+    return <AdminLogin />;
+  }
 
   if (!isReady) {
     return (
@@ -392,9 +615,38 @@ export function AdminPanel() {
           </div>
         </div>
 
+        {/* Monitoring tabs */}
+        <div className="flex border-b border-zinc-800/60">
+          <button
+            onClick={() => setViewMode("groups")}
+            className={`flex flex-1 items-center justify-center gap-1.5 py-2.5 text-xs font-semibold transition-colors ${
+              viewMode === "groups"
+                ? "border-b-2 border-red-500 text-red-300"
+                : "text-zinc-500 hover:text-zinc-300"
+            }`}
+          >
+            <MessageSquare className="h-3.5 w-3.5" />
+            Groups
+          </button>
+          <button
+            onClick={() => {
+              setViewMode("dms");
+              if (dmList === null) loadDmConversations();
+            }}
+            className={`flex flex-1 items-center justify-center gap-1.5 py-2.5 text-xs font-semibold transition-colors ${
+              viewMode === "dms"
+                ? "border-b-2 border-purple-500 text-purple-300"
+                : "text-zinc-500 hover:text-zinc-300"
+            }`}
+          >
+            <MessageCircle className="h-3.5 w-3.5" />
+            DMs
+          </button>
+        </div>
+
         {/* Stats mini panel */}
         {stats && (
-          <div className="grid grid-cols-3 gap-2 p-3">
+          <div className="grid grid-cols-4 gap-2 p-3">
             <div className="rounded-lg bg-zinc-900/60 px-2 py-2 text-center">
               <p className="text-lg font-bold text-zinc-100">
                 {stats.userCount}
@@ -413,11 +665,21 @@ export function AdminPanel() {
               </p>
               <p className="text-[10px] text-zinc-500">Msgs</p>
             </div>
+            <div className="rounded-lg bg-zinc-900/60 px-2 py-2 text-center">
+              <p className="text-lg font-bold text-zinc-100">
+                {stats.dmCount}
+              </p>
+              <p className="text-[10px] text-zinc-500">DMs</p>
+            </div>
           </div>
         )}
 
         {/* Groups list */}
-        <div className="flex-1 overflow-y-auto px-2 py-2">
+        <div
+          className={`flex-1 overflow-y-auto px-2 py-2 ${
+            viewMode === "groups" ? "" : "hidden"
+          }`}
+        >
           <p className="px-2 pb-2 text-xs font-semibold uppercase tracking-wider text-zinc-500">
             All Groups
           </p>
@@ -459,10 +721,71 @@ export function AdminPanel() {
           )}
         </div>
 
+        {/* DM conversations list */}
+        <div
+          className={`flex-1 overflow-y-auto px-2 py-2 ${
+            viewMode === "dms" ? "" : "hidden"
+          }`}
+        >
+          <p className="px-2 pb-2 text-xs font-semibold uppercase tracking-wider text-zinc-500">
+            Direct Messages
+          </p>
+          {dmListLoading ? (
+            <div className="px-2 py-8 text-center">
+              <RefreshCw className="mx-auto mb-2 h-6 w-6 animate-spin text-zinc-600" />
+              <p className="text-sm text-zinc-500">Loading…</p>
+            </div>
+          ) : !dmList || dmList.length === 0 ? (
+            <div className="px-2 py-8 text-center">
+              <MessageCircle className="mx-auto mb-2 h-8 w-8 text-zinc-600" />
+              <p className="text-sm text-zinc-500">No conversations yet.</p>
+            </div>
+          ) : (
+            <div className="space-y-1">
+              {dmList.map((dm) => {
+                const [a, b] = dm.members;
+                const label =
+                  a && b ? `${a.username} ↔ ${b.username}` : "Unknown";
+                return (
+                  <button
+                    key={dm.id}
+                    onClick={() => loadDmMessages(dm.id)}
+                    className={`flex w-full items-center gap-3 rounded-lg px-3 py-2.5 text-left transition-colors ${
+                      selectedDm === dm.id
+                        ? "bg-purple-600/20 text-purple-200"
+                        : "text-zinc-300 hover:bg-zinc-800/60"
+                    }`}
+                  >
+                    <div
+                      className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-full ${
+                        selectedDm === dm.id ? "bg-purple-600/30" : "bg-zinc-800"
+                      }`}
+                    >
+                      <MessageCircle className="h-4 w-4" />
+                    </div>
+                    <div className="min-w-0 flex-1">
+                      <p className="truncate text-sm font-medium">{label}</p>
+                      <p className="truncate text-xs text-zinc-500">
+                        {dm.lastMessage
+                          ? dm.lastMessage.content || "Message unsent"
+                          : "No messages"}{" "}
+                        · {dm.messageCount} msgs
+                      </p>
+                    </div>
+                  </button>
+                );
+              })}
+            </div>
+          )}
+        </div>
+
         {/* Refresh button */}
         <div className="border-t border-zinc-800/60 p-3">
           <button
-            onClick={refreshStats}
+            onClick={() => {
+              refreshStats();
+              if (viewMode === "dms") loadDmConversations();
+            }}
             disabled={loading}
             className="flex w-full items-center justify-center gap-2 rounded-lg border border-zinc-700 px-3 py-2 text-xs font-semibold text-zinc-300 transition-colors hover:bg-zinc-800 disabled:opacity-60"
           >
@@ -488,12 +811,87 @@ export function AdminPanel() {
               <Hash className="h-3.5 w-3.5 text-white" />
             </div>
             <h2 className="text-sm font-semibold text-zinc-100">
-              {groupMessages ? groupMessages.name : "Admin Panel"}
+              {viewMode === "dms"
+                ? dmMessages
+                  ? dmMessages.members.map((m) => m.username).join(" ↔ ")
+                  : "Admin Panel"
+                : groupMessages
+                ? groupMessages.name
+                : "Admin Panel"}
             </h2>
           </div>
         </div>
 
-        {selectedGroup ? (
+        {viewMode === "dms" ? (
+          selectedDm ? (
+            <>
+              {/* DM chat header */}
+              <div className="flex items-center gap-3 border-b border-zinc-800/60 px-5 py-3">
+                <div className="flex h-10 w-10 items-center justify-center rounded-full bg-gradient-to-br from-purple-600 to-fuchsia-600">
+                  <MessageCircle className="h-5 w-5 text-white" />
+                </div>
+                <div>
+                  <h2 className="text-sm font-semibold text-zinc-100">
+                    {dmMessages
+                      ? dmMessages.members.map((m) => m.username).join(" ↔ ") ||
+                        "Direct message"
+                      : "Loading..."}
+                  </h2>
+                  <p className="text-xs text-zinc-500">
+                    {dmMessages
+                      ? `${dmMessages.messages.length} messages · read-only`
+                      : "Loading messages..."}
+                  </p>
+                </div>
+              </div>
+
+              {/* Messages */}
+              <div
+                ref={scrollContainerRef}
+                onScroll={handleScroll}
+                className="flex-1 overflow-y-auto px-3 py-4 sm:px-5"
+              >
+                {dmLoading && !dmMessages ? (
+                  <div className="flex h-full items-center justify-center text-sm text-zinc-500">
+                    Loading messages...
+                  </div>
+                ) : dmError ? (
+                  <div className="flex h-full flex-col items-center justify-center text-center">
+                    <Eye className="mb-3 h-10 w-10 text-zinc-700" />
+                    <p className="text-sm text-red-400">{dmError}</p>
+                  </div>
+                ) : !dmMessages || dmMessages.messages.length === 0 ? (
+                  <div className="flex h-full flex-col items-center justify-center text-center">
+                    <Eye className="mb-3 h-10 w-10 text-zinc-700" />
+                    <p className="text-sm text-zinc-500">
+                      No messages in this conversation. Admin is watching... 👁️
+                    </p>
+                  </div>
+                ) : (
+                  <div className="space-y-4">
+                    {dmMessages.messages.map((msg) => (
+                      <AdminMessageItem key={msg.id} msg={msg} />
+                    ))}
+                    <div ref={messagesEndRef} />
+                  </div>
+                )}
+              </div>
+            </>
+          ) : (
+            <div className="flex flex-1 flex-col items-center justify-center p-6 text-center">
+              <div className="mb-4 flex h-20 w-20 items-center justify-center rounded-3xl bg-gradient-to-br from-purple-600 to-fuchsia-600 shadow-xl shadow-purple-900/40">
+                <MessageCircle className="h-10 w-10 text-white" />
+              </div>
+              <h2 className="text-xl font-semibold text-zinc-200">
+                Direct Message Monitoring
+              </h2>
+              <p className="mt-2 max-w-sm text-sm text-zinc-500">
+                Select a conversation from the sidebar to view it read-only.
+                Users will never know {"you're"} watching. 👁️
+              </p>
+            </div>
+          )
+        ) : selectedGroup ? (
           <>
             {/* Group chat header */}
             <div className="flex items-center justify-between border-b border-zinc-800/60 px-5 py-3">
@@ -566,68 +964,9 @@ export function AdminPanel() {
                 </div>
               ) : (
                 <div className="space-y-4">
-                  {groupMessages.messages.map((msg) => {
-                    const groupedReactions = groupReactions(
-                      msg.reactions || []
-                    );
-                    return (
-                      <div key={msg.id} className="flex justify-start">
-                        <div className="max-w-[85%] sm:max-w-[70%] items-start">
-                          <p className="mb-1 text-xs font-medium text-red-400">
-                            {msg.username}
-                          </p>
-                          <div className="rounded-2xl rounded-bl-sm bg-zinc-800 px-4 py-2.5 text-sm text-zinc-100">
-                            {/* Reply indicator */}
-                            {msg.replyTo && (
-                              <div className="mb-2 flex items-start gap-1.5 border-l-2 border-purple-400/60 pl-2 text-xs text-zinc-400">
-                                <CornerUpLeft className="mt-0.5 h-3 w-3 shrink-0" />
-                                <div className="min-w-0">
-                                  <p className="font-medium text-purple-300">
-                                    Replying to {msg.replyTo.username}
-                                  </p>
-                                  <p className="truncate opacity-80">
-                                    {msg.replyTo.content}
-                                  </p>
-                                </div>
-                              </div>
-                            )}
-                            <p className="whitespace-pre-wrap break-words">
-                              {msg.content}
-                            </p>
-                          </div>
-
-                          {/* Reactions */}
-                          {groupedReactions.length > 0 && (
-                            <div className="mt-1 flex flex-wrap gap-1">
-                              {groupedReactions.map(([emoji, reactions]) => (
-                                <span
-                                  key={emoji}
-                                  className="flex items-center gap-1 rounded-full border border-zinc-700/60 bg-zinc-800/60 px-2 py-0.5 text-xs text-zinc-300"
-                                  title={`${reactions
-                                    .map((r) => r.username)
-                                    .join(", ")}`}
-                                >
-                                  <span>{emoji}</span>
-                                  <span className="font-medium">
-                                    {reactions.length}
-                                  </span>
-                                </span>
-                              ))}
-                            </div>
-                          )}
-
-                          <p className="mt-1 text-[10px] text-zinc-600">
-                            {new Date(msg.createdAt).toLocaleString([], {
-                              month: "short",
-                              day: "numeric",
-                              hour: "numeric",
-                              minute: "2-digit",
-                            })}
-                          </p>
-                        </div>
-                      </div>
-                    );
-                  })}
+                  {groupMessages.messages.map((msg) => (
+                    <AdminMessageItem key={msg.id} msg={msg} />
+                  ))}
                   <div ref={messagesEndRef} />
                 </div>
               )}
