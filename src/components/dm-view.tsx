@@ -3,6 +3,7 @@
 import { useEffect, useRef } from "react";
 import { ArrowLeft, Send, X } from "lucide-react";
 import { MessageBubble } from "@/components/message-bubble";
+import { TimeDivider, chatDividerLabel } from "@/components/time-divider";
 import type { useDm } from "@/lib/hooks/use-dm";
 import type { Conversation } from "@/lib/types";
 import { groupColor } from "@/lib/group-color";
@@ -115,18 +116,26 @@ export function DmView({
           </div>
         ) : (
           <div className="space-y-3">
-            {messages.map((msg) => (
-              <MessageBubble
-                key={msg.id}
-                msg={msg}
-                isOwn={msg.userId === userId}
-                userId={userId}
-                onReply={(m) => setReplyTo(m)}
-                onReact={handleReact}
-                onDelete={handleDeleteMessage}
-                onEdit={handleEditMessage}
-              />
-            ))}
+            {messages.map((msg, i) => {
+              const divider = chatDividerLabel(
+                i > 0 ? messages[i - 1] : null,
+                msg
+              );
+              return (
+                <div key={msg.id}>
+                  {divider && <TimeDivider label={divider} />}
+                  <MessageBubble
+                    msg={msg}
+                    isOwn={msg.userId === userId}
+                    userId={userId}
+                    onReply={(m) => setReplyTo(m)}
+                    onReact={handleReact}
+                    onDelete={handleDeleteMessage}
+                    onEdit={handleEditMessage}
+                  />
+                </div>
+              );
+            })}
           </div>
         )}
         <div ref={messagesEndRef} />

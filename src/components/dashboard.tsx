@@ -24,6 +24,7 @@ import {
 } from "lucide-react";
 import { GroupSidebar } from "@/components/group-sidebar";
 import { MessageBubble } from "@/components/message-bubble";
+import { TimeDivider, chatDividerLabel } from "@/components/time-divider";
 import { Modal } from "@/components/modal";
 import { SearchModal } from "@/components/search-modal";
 import { DmView } from "@/components/dm-view";
@@ -557,18 +558,26 @@ export function Dashboard({
                       You&apos;re all caught up
                     </p>
                   )}
-                  {messages.map((msg) => (
-                    <MessageBubble
-                      key={msg.id}
-                      msg={msg}
-                      isOwn={msg.userId === userId}
-                      userId={userId}
-                      onReply={handleReply}
-                      onReact={handleReact}
-                      onDelete={handleDeleteMessage}
-                      onEdit={handleEditMessage}
-                    />
-                  ))}
+                  {messages.map((msg, i) => {
+                    const divider = chatDividerLabel(
+                      i > 0 ? messages[i - 1] : null,
+                      msg
+                    );
+                    return (
+                      <div key={msg.id}>
+                        {divider && <TimeDivider label={divider} />}
+                        <MessageBubble
+                          msg={msg}
+                          isOwn={msg.userId === userId}
+                          userId={userId}
+                          onReply={handleReply}
+                          onReact={handleReact}
+                          onDelete={handleDeleteMessage}
+                          onEdit={handleEditMessage}
+                        />
+                      </div>
+                    );
+                  })}
                   {/* Typing indicator — shows who is typing */}
                   {typingUsers.size > 0 && (
                     <div className="px-1 py-2 text-xs text-zinc-400 animate-pulse">

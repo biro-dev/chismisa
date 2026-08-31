@@ -52,12 +52,18 @@ beforeEach(() => {
 });
 
 describe("MessageBubble", () => {
-  it("renders the sender's username, content and time", () => {
+  it("renders the sender's username and content, with no in-bubble time", () => {
     makeBubble();
     expect(screen.getByText("marites")).toBeTruthy();
     expect(screen.getByText("Grabe, chismis ko sayo")).toBeTruthy();
-    // Time is locale/timezone-dependent — assert any HH:MM clock time shows
-    expect(screen.getByText(/\d{1,2}:\d{2}/)).toBeTruthy();
+    // Time moved to Messenger-style centered chat dividers — the bubble
+    // itself must not contain a clock time or "Seen by" receipt inline.
+    expect(screen.queryByText(/\d{1,2}:\d{2}/)).toBeNull();
+  });
+
+  it("shows an inline (edited) marker on edited messages", () => {
+    makeBubble({ editedAt: new Date().toISOString() });
+    expect(screen.getByText("(edited)")).toBeTruthy();
   });
 
   it("renders 'You' instead of the username for own messages", () => {

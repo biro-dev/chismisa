@@ -11,6 +11,11 @@ export function NativeInit() {
     if (Capacitor.isNativePlatform()) {
       // --- Native (Android APK) ---
 
+      // Tag the document so CSS can treat the native app differently from
+      // desktop browsers (e.g. never re-enable text selection on bubbles —
+      // it breaks the long-press reaction gesture).
+      document.documentElement.classList.add("native-app");
+
       // Status bar: prevent overlap on notched phones
       StatusBar.setOverlaysWebView({ overlay: false });
       StatusBar.setStyle({ style: Style.Light });

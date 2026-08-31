@@ -215,16 +215,23 @@ body {
 }
 
 /* Allow vertical scrolling over bubbles while capturing horizontal drags
-   for the swipe-to-reply gesture. */
+   for the swipe-to-reply gesture. Selection must stay fully disabled here:
+   the native long-press "select to copy" UI fires pointercancel, which kills
+   the long-press timer before the reaction overlay can open. -webkit-*
+   prefixes are required on older iOS/Android WebViews. */
 .msg-bubble-interactive {
   touch-action: pan-y;
+  -webkit-user-select: none;
+  user-select: none;
+  -webkit-touch-callout: none;
 }
 
-/* Bubbles are select-none (utility class) so touch long-press gestures don't
-   fight the native selection UI — but pointer devices (desktop) should still
-   be able to select and copy message text. */
+/* Pointer devices (desktop) can still select and copy message text — but
+   never inside the native app, where the WebView may match this media query
+   and break the long-press gesture. */
 @media (hover: hover) and (pointer: fine) {
-  .msg-bubble-interactive {
+  html:not(.native-app) .msg-bubble-interactive {
+    -webkit-user-select: text;
     user-select: text;
   }
 }

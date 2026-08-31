@@ -103,6 +103,7 @@ export const MessageBubble = memo(function MessageBubble({
   const gestureModeRef = useRef<"idle" | "pending" | "longpress" | "swipe">("idle");
   const startPosRef = useRef<{ x: number; y: number } | null>(null);
   const suppressClickRef = useRef(false);
+  const lastPointerTypeRef = useRef<string>("mouse");
   const highlightedEmojiRef = useRef<string | null>(null);
   // Filter emojis based on search query
   const filteredEmojis = useMemo(() => {
@@ -117,16 +118,6 @@ export const MessageBubble = memo(function MessageBubble({
       setActiveEmojiCategory(0);
     }
   }, [emojiPickerOpen]);
-
-  // Memoized formatted timestamp - computed once per message
-  const formattedTime = useMemo(
-    () =>
-      new Date(msg.createdAt).toLocaleTimeString([], {
-        hour: "numeric",
-        minute: "2-digit",
-      }),
-    [msg.createdAt]
-  );
 
   // Group reactions by emoji - memoized so it only recomputes when reactions change
   const groupedReactions = useMemo(() => {
@@ -229,6 +220,7 @@ export const MessageBubble = memo(function MessageBubble({
     (e: React.PointerEvent<HTMLDivElement>) => {
       if (msg.deletedAt || isEditing) return;
       const isTouch = e.pointerType !== "mouse";
+      lastPointerTypeRef.current = e.pointerType;
       suppressClickRef.current = false;
       startPosRef.current = { x: e.clientX, y: e.clientY };
       gestureModeRef.current = "pending";
@@ -248,6 +240,19 @@ export const MessageBubble = memo(function MessageBubble({
       }
     },
     [msg.deletedAt, isEditing, openOverlay]
+  );
+
+  // Block the native long-press "select to copy" UI on touch pointers: it
+  // highlights the text and fires pointercancel, which kills the long-press
+  // timer before the reaction overlay can open. Desktop right-click (mouse)
+  // is left untouched.
+  const handleContextMenu = useCallback(
+    (e: React.MouseEvent<HTMLDivElement>) => {
+      if (lastPointerTypeRef.current !== "mouse") {
+        e.preventDefault();
+      }
+    },
+    []
   );
 
   const handlePointerMove = useCallback(
@@ -454,7 +459,7 @@ export const MessageBubble = memo(function MessageBubble({
       data-message-id={msg.id}
       className={`group msg-bubble flex ${
         isOwn ? "justify-end" : "justify-start"
-      }`}
+      } ${groupedReactions.length > 0 ? "pb-3" : ""}`}
     >
       <div
         className={`w-fit min-w-0 max-w-[85%] sm:max-w-[70%] ${
@@ -475,7 +480,8 @@ export const MessageBubble = memo(function MessageBubble({
           onPointerUp={handlePointerUp}
           onPointerCancel={handlePointerCancel}
           onClick={handleBubbleClick}
-          className={`msg-bubble-interactive relative rounded-2xl px-4 pt-2.5 pb-8 text-sm transition-transform duration-300 [transition-timing-function:cubic-bezier(0.25,1,0.5,1)] select-none ${
+          onContextMenu={handleContextMenu}
+          className={`msg-bubble-interactive relative rounded-2xl px-4 pt-2.5 pb-3 text-sm transition-transform duration-300 [transition-timing-function:cubic-bezier(0.25,1,0.5,1)] select-none ${
             msg.deletedAt
               ? "border border-dashed border-zinc-700 italic text-zinc-500"
               : isOwn
@@ -544,22 +550,15 @@ export const MessageBubble = memo(function MessageBubble({
               </div>
             </div>
           ) : (
-            <p className="whitespace-pre-wrap break-words">{msg.content}</p>
+            <p className="whitespace-pre-wrap break-words">
+              {msg.content}
+              {!msg.deletedAt && msg.editedAt && (
+                <span className="ml-1 align-baseline text-[10px] italic opacity-70">
+                  (edited)
+                </span>
+              )}
+            </p>
           )}
-          {/* Timestamp - inside bubble bottom-right */}
-          <p
-            className={`absolute bottom-1.5 right-3 text-[10px] leading-none ${
-              msg.deletedAt ? "text-zinc-500" : isOwn ? "text-white/70" : "text-zinc-500"
-            }`}
-          >
-            {formattedTime}
-            {!msg.deletedAt && msg.editedAt && (
-              <span className="ml-1 italic">(edited)</span>
-            )}
-            {isOwn && !msg.deletedAt && (msg.seenCount ?? 0) > 0 && (
-              <span className="ml-1 text-emerald-300">Seen by {msg.seenCount}</span>
-            )}
-          </p>
 
           {/* Applied reaction badges - overlapping on the bubble's bottom corner */}
           {!msg.deletedAt && groupedReactions.length > 0 && (
@@ -590,6 +589,14 @@ export const MessageBubble = memo(function MessageBubble({
             </div>
           )}
         </div>
+
+        {/* Read receipt — below the bubble (in flow) so it can never overlap
+            the message text or the reaction badges */}
+        {isOwn && !msg.deletedAt && (msg.seenCount ?? 0) > 0 && (
+          <p className="mt-0.5 pr-1 text-right text-[10px] leading-none text-emerald-400">
+            Seen by {msg.seenCount}
+          </p>
+        )}
       </div>
 
       {/* --- Messenger-style reaction/action overlay (portaled to body) --- */}
