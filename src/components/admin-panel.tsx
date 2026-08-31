@@ -7,7 +7,6 @@ import {
   MessageSquare,
   Hash,
   Trash2,
-  KeyRound,
   ArrowLeft,
   RefreshCw,
   Eye,
@@ -15,6 +14,7 @@ import {
   X,
   Menu,
   CornerUpLeft,
+  LogOut,
 } from "lucide-react";
 import { useRouter } from "next/navigation";
 import {
@@ -23,6 +23,8 @@ import {
   getGroupMembersAction,
   removeMemberAction,
   getGroupMessagesAction,
+  loginAdminAction,
+  logoutAdminAction,
 } from "@/lib/actions/admin";
 
 type AdminStats = {
@@ -78,9 +80,8 @@ type GroupDetails = {
 
 export function AdminPanel() {
   const router = useRouter();
-  const [secret, setSecret] = useState("");
-  const [authenticated, setAuthenticated] = useState(false);
-  const [error, setError] = useState("");
+  const [isReady, setIsReady] = useState(false);
+  const secretRef = useRef<string>("");
   const [stats, setStats] = useState<AdminStats | null>(null);
   const [loading, setLoading] = useState(false);
   const [deleting, setDeleting] = useState<string | null>(null);
@@ -105,38 +106,63 @@ export function AdminPanel() {
   const [removingMember, setRemovingMember] = useState<string | null>(null);
   const [membersError, setMembersError] = useState("");
 
-  const handleAuth = async (e: React.FormEvent) => {
-    e.preventDefault();
-    setError("");
-    setLoading(true);
-    try {
-      const data = await getAdminStats(secret);
-      if (!data) {
-        setError("Invalid admin secret key.");
-      } else {
-        setAuthenticated(true);
-        setStats(data);
-      }
-    } finally {
-      setLoading(false);
+  // On mount: read secret from sessionStorage and ensure cookie is set
+  useEffect(() => {
+    const secret = sessionStorage.getItem("admin_secret") || "";
+    secretRef.current = secret;
+    if (!secret) {
+      router.replace("/chismis-admin");
+      return;
     }
+    loginAdminAction(secret)
+      .then((result) => {
+        if (result.error) {
+          sessionStorage.removeItem("admin_secret");
+          router.replace("/chismis-admin");
+        } else {
+          setIsReady(true);
+        }
+      })
+      .catch(() => {
+        router.replace("/chismis-admin");
+      });
+  }, [router]);
+
+  const handleLogout = async () => {
+    await logoutAdminAction();
+    sessionStorage.removeItem("admin_secret");
+    router.replace("/chismis-admin");
   };
 
   const refreshStats = async () => {
     setLoading(true);
     try {
-      const data = await getAdminStats(secret);
+      const data = await getAdminStats(secretRef.current);
       if (data) setStats(data);
     } finally {
       setLoading(false);
     }
   };
 
+  // Load stats once the session is verified
+  useEffect(() => {
+    if (!isReady) return;
+    let cancelled = false;
+    getAdminStats(secretRef.current)
+      .then((data) => {
+        if (data && !cancelled) setStats(data);
+      })
+      .catch(() => {});
+    return () => {
+      cancelled = true;
+    };
+  }, [isReady]);
+
   const handleDeleteGroup = async (groupId: string) => {
     if (!confirm("Delete this group and all its messages?")) return;
     setDeleting(groupId);
     try {
-      await deleteGroupAction(secret, groupId);
+      await deleteGroupAction(secretRef.current, groupId);
       if (selectedGroup === groupId) {
         setSelectedGroup(null);
         setGroupMessages(null);
@@ -162,7 +188,7 @@ export function AdminPanel() {
     setMessagesError("");
     lastMessageTimeRef.current = null;
     try {
-      const data = await getGroupMessagesAction(secret, groupId);
+      const data = await getGroupMessagesAction(secretRef.current, groupId);
       if (data) {
         setGroupMessages(data);
         setMessagesError("");
@@ -195,7 +221,7 @@ export function AdminPanel() {
       if (document.hidden) return;
       try {
         const since = lastMessageTimeRef.current || undefined;
-        const data = await getGroupMessagesAction(secret, selectedGroup, since);
+        const data = await getGroupMessagesAction(secretRef.current, selectedGroup, since);
         if (data) {
           setGroupMessages((prev) => {
             if (!prev) return data;
@@ -234,7 +260,7 @@ export function AdminPanel() {
       if (interval) clearInterval(interval);
       document.removeEventListener("visibilitychange", onVisibility);
     };
-  }, [selectedGroup, secret]);
+  }, [selectedGroup]);
 
   // Smart auto-scroll — only scrolls to bottom if the user is already near it
   useEffect(() => {
@@ -247,7 +273,7 @@ export function AdminPanel() {
     setMembersLoading(true);
     setMembersError("");
     try {
-      const data = await getGroupMembersAction(secret, groupId);
+      const data = await getGroupMembersAction(secretRef.current, groupId);
       if (data) {
         setMembersModal(data);
       } else {
@@ -267,10 +293,10 @@ export function AdminPanel() {
     setRemovingMember(userId);
     setMembersError("");
     try {
-      const result = await removeMemberAction(secret, membersModal.id, userId);
+      const result = await removeMemberAction(secretRef.current, membersModal.id, userId);
       if (result.success) {
         // Refresh member list
-        const data = await getGroupMembersAction(secret, membersModal.id);
+        const data = await getGroupMembersAction(secretRef.current, membersModal.id);
         if (data) {
           setMembersModal(data);
         }
@@ -302,61 +328,12 @@ export function AdminPanel() {
     return Array.from(grouped.entries());
   };
 
-  if (!authenticated) {
+  if (!isReady) {
     return (
       <div className="flex flex-1 items-center justify-center p-4">
-        <div className="w-full max-w-sm">
-          <div className="mb-8 text-center">
-            <div className="mx-auto mb-4 flex h-16 w-16 items-center justify-center rounded-2xl bg-gradient-to-br from-red-600 to-purple-600 shadow-lg shadow-red-900/50">
-              <Shield className="h-8 w-8 text-white" />
-            </div>
-            <h1 className="text-2xl font-bold text-zinc-100">Admin Access</h1>
-            <p className="mt-2 text-sm text-zinc-500">
-              Enter the master secret key to access the Chismisa admin panel.
-            </p>
-          </div>
-          <form onSubmit={handleAuth} className="space-y-4">
-            {error && (
-              <div className="rounded-lg border border-red-500/30 bg-red-500/10 px-4 py-3 text-sm text-red-400">
-                {error}
-              </div>
-            )}
-            <div>
-              <label
-                htmlFor="admin-secret"
-                className="mb-1.5 block text-sm font-medium text-zinc-300"
-              >
-                Secret Key
-              </label>
-              <div className="relative">
-                <KeyRound className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-zinc-500" />
-                <input
-                  id="admin-secret"
-                  type="password"
-                  value={secret}
-                  onChange={(e) => setSecret(e.target.value)}
-                  required
-                  placeholder="Enter master secret key"
-                  className="w-full rounded-xl border border-zinc-700/60 bg-zinc-900/60 py-3 pl-10 pr-4 text-sm text-zinc-100 placeholder-zinc-500 outline-none transition-colors focus:border-red-500 focus:ring-2 focus:ring-red-500/20 sm:py-2.5"
-                />
-              </div>
-            </div>
-            <button
-              type="submit"
-              disabled={loading}
-              className="w-full rounded-xl bg-gradient-to-r from-red-600 to-purple-600 py-3.5 text-sm font-semibold text-white transition-colors hover:from-red-500 hover:to-purple-500 disabled:opacity-60 sm:py-3"
-            >
-              {loading ? "Verifying..." : "Access Admin Panel"}
-            </button>
-            <button
-              type="button"
-              onClick={() => router.push("/")}
-              className="flex w-full items-center justify-center gap-1.5 text-sm text-zinc-500 transition-colors hover:text-zinc-300"
-            >
-              <ArrowLeft className="h-3.5 w-3.5" />
-              Back to Chismisa
-            </button>
-          </form>
+        <div className="flex flex-col items-center gap-3">
+          <div className="h-8 w-8 animate-spin rounded-full border-2 border-purple-500 border-t-transparent" />
+          <p className="text-sm text-zinc-500">Verifying access…</p>
         </div>
       </div>
     );
@@ -397,13 +374,22 @@ export function AdminPanel() {
               <p className="text-xs text-zinc-500">Secret monitoring</p>
             </div>
           </div>
-          <button
-            onClick={() => router.push("/")}
-            title="Back to Chismisa"
-            className="rounded-lg p-2 text-zinc-400 transition-colors hover:bg-zinc-800 hover:text-red-400"
-          >
-            <ArrowLeft className="h-4 w-4" />
-          </button>
+          <div className="flex items-center gap-1">
+            <button
+              onClick={handleLogout}
+              title="Log out"
+              className="rounded-lg p-2 text-zinc-400 transition-colors hover:bg-zinc-800 hover:text-yellow-400"
+            >
+              <LogOut className="h-4 w-4" />
+            </button>
+            <button
+              onClick={() => router.push("/")}
+              title="Back to Chismisa"
+              className="rounded-lg p-2 text-zinc-400 transition-colors hover:bg-zinc-800 hover:text-red-400"
+            >
+              <ArrowLeft className="h-4 w-4" />
+            </button>
+          </div>
         </div>
 
         {/* Stats mini panel */}

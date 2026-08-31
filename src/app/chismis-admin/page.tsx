@@ -1,6 +1,6 @@
 import { cookies } from "next/headers";
-import { redirect } from "next/navigation";
 import { AdminPanel } from "@/components/admin-panel";
+import { AdminLogin } from "@/components/admin-login";
 
 export const metadata = {
   title: "Chismisa Admin",
@@ -30,7 +30,7 @@ export default async function AdminPage() {
   const isAuthorized = await verifyAdminAccess();
   
   if (!isAuthorized) {
-    redirect("/login");
+    return <AdminLogin />;
   }
 
   return <AdminPanel />;

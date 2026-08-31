@@ -12,6 +12,37 @@ function verifyAdminSecret(secret: string): boolean {
   return timingSafeEqual(a, b);
 }
 
+const ADMIN_COOKIE = "admin_secret";
+
+/**
+ * Verify the master secret and set the admin cookie so the
+ * /chismis-admin page (server component) authorizes the session.
+ */
+export async function loginAdminAction(secret: string) {
+  if (!verifyAdminSecret(secret)) {
+    return { error: "Invalid admin secret key." };
+  }
+  const { cookies } = await import("next/headers");
+  const cookieStore = await cookies();
+  cookieStore.set(ADMIN_COOKIE, secret, {
+    httpOnly: true,
+    secure: process.env.NODE_ENV === "production",
+    sameSite: "lax",
+    maxAge: 60 * 60 * 8, // 8 hours
+    path: "/",
+  });
+  return { success: true };
+}
+
+/** Clear the admin cookie (log out of the admin panel). */
+export async function logoutAdminAction() {
+  const { cookies } = await import("next/headers");
+  const cookieStore = await cookies();
+  cookieStore.delete(ADMIN_COOKIE);
+  return { success: true };
+}
+
+
 export async function getAdminStats(secret: string) {
   if (!verifyAdminSecret(secret)) return null;
 

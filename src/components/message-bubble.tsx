@@ -94,16 +94,16 @@ export const MessageBubble = memo(function MessageBubble({
   const [overlayAnchor, setOverlayAnchor] = useState<{
     x: number;
     y: number;
+    bottomY: number;
     below: boolean;
   } | null>(null);
   const [swipeX, setSwipeX] = useState(0);
-  const swipingRef = useRef(false);
+  const [isSwiping, setIsSwiping] = useState(false);
   const pressTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const gestureModeRef = useRef<"idle" | "pending" | "longpress" | "swipe">("idle");
   const startPosRef = useRef<{ x: number; y: number } | null>(null);
   const suppressClickRef = useRef(false);
   const highlightedEmojiRef = useRef<string | null>(null);
-  const leftPosRef = useRef(0);
   // Filter emojis based on search query
   const filteredEmojis = useMemo(() => {
     if (!emojiSearchQuery.trim()) return null;
@@ -157,6 +157,14 @@ export const MessageBubble = memo(function MessageBubble({
     };
   }, [overlayOpen, emojiPickerOpen]);
 
+  // Dismiss the reaction overlay if the chat scrolls underneath it
+  useEffect(() => {
+    if (!overlayOpen) return;
+    const onScroll = () => setOverlayOpen(false);
+    document.addEventListener("scroll", onScroll, true);
+    return () => document.removeEventListener("scroll", onScroll, true);
+  }, [overlayOpen]);
+
   const clearPressTimer = useCallback(() => {
     if (pressTimerRef.current) {
       clearTimeout(pressTimerRef.current);
@@ -173,9 +181,13 @@ export const MessageBubble = memo(function MessageBubble({
     if (!el) return;
     const rect = el.getBoundingClientRect();
     const below = rect.top < 300;
+    // Clamp so the pill (half-width ~170px) never exits the viewport
+    const vw = typeof window !== "undefined" ? window.innerWidth : 360;
+    const x = Math.max(170, Math.min(vw - 170, Math.round(rect.left + rect.width / 2)));
     setOverlayAnchor({
-      x: Math.round(rect.left + rect.width / 2),
+      x,
       y: Math.round(rect.top),
+      bottomY: Math.round(rect.bottom),
       below,
     });
     setOverlayOpen(true);
@@ -199,7 +211,6 @@ export const MessageBubble = memo(function MessageBubble({
       const isTouch = e.pointerType !== "mouse";
       suppressClickRef.current = false;
       startPosRef.current = { x: e.clientX, y: e.clientY };
-      leftPosRef.current = 0;
 
       if (isTouch) {
         gestureModeRef.current = "pending";
@@ -228,14 +239,18 @@ export const MessageBubble = memo(function MessageBubble({
 
       if (gestureModeRef.current === "pending") {
         // Movement cancels long-press unless it's a clear horizontal swipe
+        // in the bubble's swipe direction (received: right, own: left)
         const absDx = Math.abs(dx);
         const absDy = Math.abs(dy);
-        if (absDx > 14 && absDx > absDy * 1.2) {
+        const validDir = isOwn ? dx < 0 : dx > 0;
+        if (absDx > 14 && absDx > absDy * 1.2 && validDir) {
           clearPressTimer();
           gestureModeRef.current = "swipe";
-          swipingRef.current = true;
+          setIsSwiping(true);
           suppressClickRef.current = true;
-          setSwipeX(Math.min(110, Math.max(0, dx)));
+          setSwipeX(
+            isOwn ? Math.max(-110, Math.min(0, dx)) : Math.min(110, Math.max(0, dx))
+          );
         } else if (absDy > 14 || (absDx > 14 && absDy > absDx)) {
           // Vertical or diagonal movement - cancel long-press
           clearPressTimer();
@@ -245,12 +260,14 @@ export const MessageBubble = memo(function MessageBubble({
       }
 
       if (gestureModeRef.current === "swipe") {
-        // Follow finger, clamp to 110px
-        const next = Math.min(110, Math.max(0, dx));
+        // Follow finger 1:1, clamp to 110px in the swipe direction
+        const next = isOwn
+          ? Math.max(-110, Math.min(0, dx))
+          : Math.min(110, Math.max(0, dx));
         setSwipeX(next);
       }
     },
-    [clearPressTimer]
+    [clearPressTimer, isOwn]
   );
 
   const finishSwipe = useCallback(
@@ -270,9 +287,10 @@ export const MessageBubble = memo(function MessageBubble({
       const start = startPosRef.current;
       if (gestureModeRef.current === "swipe") {
         const dx = e.clientX - (start?.x ?? e.clientX);
-        finishSwipe(dx >= SWIPE_TRIGGER_PX);
+        finishSwipe(Math.abs(dx) >= SWIPE_TRIGGER_PX);
         gestureModeRef.current = "idle";
         startPosRef.current = null;
+        setIsSwiping(false);
         suppressClickRef.current = true;
         requestAnimationFrame(() => {
           suppressClickRef.current = false;
@@ -295,17 +313,23 @@ export const MessageBubble = memo(function MessageBubble({
     clearPressTimer();
     startPosRef.current = null;
     gestureModeRef.current = "idle";
-    swipingRef.current = false;
+    setIsSwiping(false);
     setSwipeX(0);
   }, [clearPressTimer]);
 
   // Desktop: click toggles overlay (suppressed after a swipe/long-press)
-  const handleBubbleClick = useCallback(() => {
-    if (msg.deletedAt || isEditing) return;
-    if (suppressClickRef.current) return;
-    if (gestureModeRef.current !== "idle") return;
-    openOverlay();
-  }, [msg.deletedAt, isEditing, openOverlay]);
+  // Touch uses long-press only - quick taps shouldn't open the overlay
+  const handleBubbleClick = useCallback(
+    (e: React.MouseEvent<HTMLDivElement>) => {
+      if (msg.deletedAt || isEditing) return;
+      if (suppressClickRef.current) return;
+      if (gestureModeRef.current !== "idle") return;
+      const pt = (e.nativeEvent as PointerEvent | undefined)?.pointerType;
+      if (pt === "touch" || pt === "pen") return;
+      openOverlay();
+    },
+    [msg.deletedAt, isEditing, openOverlay]
+  );
   // --- Inline editing ---
 
   const startEditing = useCallback(() => {
@@ -410,16 +434,17 @@ export const MessageBubble = memo(function MessageBubble({
           onPointerUp={handlePointerUp}
           onPointerCancel={handlePointerCancel}
           onClick={handleBubbleClick}
-          className={`msg-bubble-interactive relative rounded-2xl px-4 pt-2.5 pb-8 text-sm transition-[transform] duration-300 select-none ${
-            swipeX > 0 ? "" : "[transition-timing-function:cubic-bezier(0.25,1,0.5,1)]"
-          } ${
+          className={`msg-bubble-interactive relative rounded-2xl px-4 pt-2.5 pb-8 text-sm transition-transform duration-300 [transition-timing-function:cubic-bezier(0.25,1,0.5,1)] select-none ${
             msg.deletedAt
               ? "border border-dashed border-zinc-700 italic text-zinc-500"
               : isOwn
               ? "rounded-br-sm bg-gradient-to-r from-purple-600 to-fuchsia-600 text-white"
               : "rounded-bl-sm bg-zinc-800 text-zinc-100"
           }`}
-          style={swipeX > 0 ? { transform: `translateX(${Math.min(swipeX, 110)}px)` } : { transform: "translateX(0)" }}
+          style={{
+            transform: `translateX(${swipeX}px)`,
+            transition: isSwiping ? "none" : undefined,
+          }}
         >
           {/* Reply indicator */}
           {msg.replyTo && !msg.deletedAt && (
@@ -496,7 +521,8 @@ export const MessageBubble = memo(function MessageBubble({
           {/* Applied reaction badges - overlapping on the bubble's bottom corner */}
           {!msg.deletedAt && groupedReactions.length > 0 && (
             <div
-              className={`absolute bottom-[-10px] z-10 flex ${isOwn ? "right-2" : "left-2"}`}
+              onPointerDown={(e) => e.stopPropagation()}
+              className="absolute bottom-[-10px] left-2 z-10 flex"
             >
               {groupedReactions.slice(0, 3).map(([emoji, reactions], i) => (
                 <button
@@ -537,14 +563,22 @@ export const MessageBubble = memo(function MessageBubble({
               <div
                 ref={pickerRef}
                 onClick={(e) => e.stopPropagation()}
-                className={`absolute z-10 flex flex-col items-center ${
-                  overlayAnchor.below
-                    ? "top-24 left-1/2 -translate-x-1/2"
-                    : "top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2"
+                className={`absolute z-10 flex items-center gap-2 ${
+                  overlayAnchor.below ? "flex-col" : "flex-col-reverse"
                 }`}
                 style={{
                   left: overlayAnchor.x,
-                  top: overlayAnchor.below ? undefined : overlayAnchor.y - 8 - 200,
+                  transform: "translateX(-50%)",
+                  ...(overlayAnchor.below
+                    ? { top: overlayAnchor.bottomY + 8 }
+                    : {
+                        bottom:
+                          (typeof window !== "undefined"
+                            ? window.innerHeight
+                            : 800) -
+                          overlayAnchor.y +
+                          8,
+                      }),
                 }}
               >
                 {/* Action menu - stack above the pill */}
