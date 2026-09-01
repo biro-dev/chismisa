@@ -86,6 +86,7 @@ export function useChat({
   const [replyTo, setReplyTo] = useState<Message | null>(null);
   const [actionError, setActionError] = useState("");
   // Track optimistic message IDs to avoid duplication when poll returns confirmed message
+  // Stores both temp IDs (optimistic) and server IDs (confirmed) to prevent duplicates
   const optimisticMessageIdsRef = useRef<Set<string>>(new Set());
   // Real-time state
   // Map of userId → username for users currently typing (per-user timeouts)
@@ -550,6 +551,8 @@ export function useChat({
         // action resolved), then swap the optimistic entry in.
         const confirmed = result.message as Message;
         optimisticMessageIdsRef.current.delete(optimisticId);
+        // Track the server ID so subsequent polls don't re-add this message
+        optimisticMessageIdsRef.current.add(confirmed.id);
         setMessages((prev) => {
           const withoutPolledCopy = prev.filter((m) => m.id !== confirmed.id);
           return withoutPolledCopy.map((m) =>

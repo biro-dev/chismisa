@@ -50,6 +50,8 @@ export type DashboardProps = {
   groups: Group[];
   activeGroup: GroupDetails | null;
   messages: Message[];
+  /** Error code from redirect (e.g., "invalid-code" from /join/[code]). */
+  error?: string;
 };
 
 // ─── Direct messages ─────────────────────────────────────────────────────────

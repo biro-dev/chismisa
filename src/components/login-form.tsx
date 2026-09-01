@@ -1,8 +1,7 @@
 "use client";
 
-import { useActionState, useState } from "react";
+import { useActionState, useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
-import { useEffect } from "react";
 import { Lock, User, Eye, EyeOff } from "lucide-react";
 import { loginAction } from "@/lib/actions/auth";
 import { Capacitor } from "@capacitor/core";
@@ -70,7 +69,7 @@ export function LoginForm() {
             name="password"
             type={showPassword ? "text" : "password"}
             required
-            minLength={4}
+            minLength={8}
             placeholder="••••••••"
             className="w-full rounded-xl border border-hairline bg-surface-raised py-3 pl-10 pr-12 text-sm text-ink-text placeholder:text-ink-muted outline-none transition-colors focus:border-gossip focus:ring-2 focus:ring-gossip/20 sm:py-2.5"
           />

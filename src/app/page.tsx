@@ -7,14 +7,14 @@ import { Dashboard } from "@/components/dashboard";
 export default async function HomePage({
   searchParams,
 }: {
-  searchParams: Promise<{ group?: string }>;
+  searchParams: Promise<{ group?: string; error?: string }>;
 }) {
   const session = await getSession();
   if (!session) {
     redirect("/login");
   }
 
-  const { group } = await searchParams;
+  const { group, error } = await searchParams;
   const groups = await getUserGroups();
 
   // Determine active group
@@ -35,6 +35,7 @@ export default async function HomePage({
       groups={groups}
       activeGroup={activeGroup}
       messages={messages}
+      error={error}
     />
   );
 }

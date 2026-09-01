@@ -63,6 +63,7 @@ export function Dashboard({
   groups,
   activeGroup,
   messages: initialMessages,
+  error,
 }: DashboardProps) {
   const router = useRouter();
   // The sidebar group list is server-sourced via the RSC prop, but it's also
@@ -207,6 +208,13 @@ export function Dashboard({
   useEffect(() => {
     applyTheme(theme);
   }, [theme]);
+
+  // Show error toast for redirect-based errors (e.g., invalid invite code)
+  useEffect(() => {
+    if (error === "invalid-code") {
+      showToast("This invite link is invalid or has expired.", "error");
+    }
+  }, [error]);
 
   const toggleTheme = useCallback(() => {
     toggleThemeInStore(theme);

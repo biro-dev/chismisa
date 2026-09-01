@@ -43,6 +43,12 @@ export async function GET(request: NextRequest) {
     return NextResponse.json({ error: "Forbidden" }, { status: 403 });
   }
 
+  // Fetch all members' read states (for computing seen counts)
+  const memberReadStates = await db.groupMember.findMany({
+    where: { groupId },
+    select: { userId: true, lastReadAt: true },
+  });
+
   const messages = await db.message.findMany({
     where: {
       groupId,
@@ -83,7 +89,16 @@ export async function GET(request: NextRequest) {
       deletedAt: null,
       editedAt: m.editedAt ? m.editedAt.toISOString() : null,
       createdAt: m.createdAt.toISOString(),
-      seenCount: 0,
+      // Seen count: how many OTHER members have read up to this message
+      seenCount:
+        m.userId === session.userId
+          ? memberReadStates.filter(
+              (ms) =>
+                ms.userId !== m.userId &&
+                ms.lastReadAt !== null &&
+                new Date(ms.lastReadAt) >= m.createdAt
+            ).length
+          : 0,
       replyTo: m.replyTo
         ? {
             id: m.replyTo.id,

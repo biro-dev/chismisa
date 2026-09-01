@@ -286,7 +286,8 @@ export function setBadgeHandler(fn: (groupId: string) => void): void {
 
 /** Clean up all channels and disconnect (call on logout / page unload). */
 export function disconnectRealtime(): void {
-  if (pusher) {
+  const pusherInstance = pusher;
+  if (pusherInstance) {
     for (const [name, state] of channelStates) {
       if (state.activeHandlersBound) {
         unbindActiveHandlers(state.channel);
@@ -294,15 +295,16 @@ export function disconnectRealtime(): void {
       if (state.badgeHandlerBound) {
         unbindBadgeHandler(state.channel);
       }
-      pusher.unsubscribe(name);
+      pusherInstance.unsubscribe(name);
     }
-    pusher.disconnect();
+    for (const [name, state] of dmChannelStates) {
+      if (state.handlersBound) unbindDmHandlers(state.channel);
+      pusherInstance.unsubscribe(name);
+    }
+    pusherInstance.disconnect();
     pusher = null;
   }
   channelStates.clear();
-  for (const [, state] of dmChannelStates) {
-    if (state.handlersBound) unbindDmHandlers(state.channel);
-  }
   dmChannelStates.clear();
   (window as unknown as { __badgeHandler?: ((groupId: string) => void) | null }).__badgeHandler = null;
 }

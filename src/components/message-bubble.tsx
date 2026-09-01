@@ -8,11 +8,8 @@ import { Haptics, ImpactStyle } from "@capacitor/haptics";
 import type { Message, MessageReaction } from "@/lib/types";
 import { EMOJI_CATEGORIES, QUICK_EMOJIS, searchEmojis } from "@/lib/emoji-data";
 
-// Check if Haptics plugin is available
-const hapticsAvailable = Capacitor.isPluginAvailable("Haptics");
-
 function triggerHaptic(style: ImpactStyle) {
-  if (hapticsAvailable) {
+  if (Capacitor.isPluginAvailable("Haptics")) {
     Haptics.impact({ style }).catch(() => {});
   }
 }
