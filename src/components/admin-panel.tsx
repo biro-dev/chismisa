@@ -148,13 +148,13 @@ function AdminMessageItem({ msg }: { msg: AdminMessageShape }) {
     <div className="flex justify-start">
       <div className="max-w-[85%] items-start sm:max-w-[70%]">
         <p className="mb-1 text-xs font-medium text-red-400">{msg.username}</p>
-        <div className="rounded-2xl rounded-bl-sm bg-zinc-800 px-4 py-2.5 text-sm text-zinc-100">
+        <div className="rounded-2xl rounded-bl-sm bg-surface-raised px-4 py-2.5 text-sm text-ink-text">
           {/* Reply indicator */}
           {msg.replyTo && (
-            <div className="mb-2 flex items-start gap-1.5 border-l-2 border-purple-400/60 pl-2 text-xs text-zinc-400">
+            <div className="mb-2 flex items-start gap-1.5 border-l-2 border-purple-400/60 pl-2 text-xs text-ink-muted">
               <CornerUpLeft className="mt-0.5 h-3 w-3 shrink-0" />
               <div className="min-w-0">
-                <p className="font-medium text-purple-300">
+                <p className="font-medium text-gossip">
                   Replying to {msg.replyTo.username}
                 </p>
                 <p className="truncate opacity-80">
@@ -164,7 +164,7 @@ function AdminMessageItem({ msg }: { msg: AdminMessageShape }) {
             </div>
           )}
           {isDeleted ? (
-            <p className="italic text-zinc-500">Message unsent</p>
+            <p className="italic text-ink-muted">Message unsent</p>
           ) : (
             <p className="whitespace-pre-wrap break-words">{msg.content}</p>
           )}
@@ -176,7 +176,7 @@ function AdminMessageItem({ msg }: { msg: AdminMessageShape }) {
             {Array.from(grouped.entries()).map(([emoji, reactions]) => (
               <span
                 key={emoji}
-                className="flex items-center gap-1 rounded-full border border-zinc-700/60 bg-zinc-800/60 px-2 py-0.5 text-xs text-zinc-300"
+                className="flex items-center gap-1 rounded-full border border-hairline bg-surface/70 px-2 py-0.5 text-xs text-ink-text"
                 title={`${reactions.map((r) => r.username).join(", ")}`}
               >
                 <span>{emoji}</span>
@@ -186,7 +186,7 @@ function AdminMessageItem({ msg }: { msg: AdminMessageShape }) {
           </div>
         )}
 
-        <p className="mt-1 text-[10px] text-zinc-600">
+        <p className="mt-1 text-[10px] text-ink-muted">
           {new Date(msg.createdAt).toLocaleString([], {
             month: "short",
             day: "numeric",
@@ -556,7 +556,7 @@ export function AdminPanel() {
       <div className="flex flex-1 items-center justify-center p-4">
         <div className="flex flex-col items-center gap-3">
           <div className="h-8 w-8 animate-spin rounded-full border-2 border-purple-500 border-t-transparent" />
-          <p className="text-sm text-zinc-500">Verifying access…</p>
+          <p className="text-sm text-ink-muted">Verifying access…</p>
         </div>
       </div>
     );
@@ -574,41 +574,41 @@ export function AdminPanel() {
 
       {/* Left Sidebar - All groups */}
       <aside
-        className={`fixed z-50 flex w-72 flex-col border-r border-zinc-800/60 bg-[#0d0818] transition-transform duration-200 md:static md:z-auto md:translate-x-0 ${
+        className={`fixed z-50 flex w-72 flex-col border-r border-hairline bg-ink transition-transform duration-200 md:static md:z-auto md:translate-x-0 ${
           sidebarOpen ? "translate-x-0" : "-translate-x-full"
         }`}
       >
         <button
           onClick={() => setSidebarOpen(false)}
-          className="absolute right-3 top-3 rounded-lg p-1.5 text-zinc-400 transition-colors hover:bg-zinc-800 hover:text-zinc-200 md:hidden"
+          className="absolute right-3 top-3 rounded-lg p-1.5 text-ink-muted transition-colors hover:bg-surface-raised hover:text-ink-text md:hidden"
           title="Close menu"
         >
           <X className="h-4 w-4" />
         </button>
 
         {/* Admin header */}
-        <div className="safe-top flex items-center justify-between border-b border-zinc-800/60 p-4">
+        <div className="safe-top flex items-center justify-between border-b border-hairline p-4">
           <div className="flex items-center gap-3">
             <div className="flex h-10 w-10 items-center justify-center rounded-full bg-gradient-to-br from-red-600 to-purple-600 text-sm font-bold text-white">
               <Shield className="h-5 w-5" />
             </div>
             <div>
-              <p className="text-sm font-semibold text-zinc-100">Admin</p>
-              <p className="text-xs text-zinc-500">Secret monitoring</p>
+              <p className="text-sm font-semibold text-ink-text">Admin</p>
+              <p className="text-xs text-ink-muted">Secret monitoring</p>
             </div>
           </div>
           <div className="flex items-center gap-1">
             <button
               onClick={handleLogout}
               title="Log out"
-              className="rounded-lg p-2 text-zinc-400 transition-colors hover:bg-zinc-800 hover:text-yellow-400"
+              className="rounded-lg p-2 text-ink-muted transition-colors hover:bg-surface-raised hover:text-yellow-400"
             >
               <LogOut className="h-4 w-4" />
             </button>
             <button
               onClick={() => router.push("/")}
               title="Back to Chismisa"
-              className="rounded-lg p-2 text-zinc-400 transition-colors hover:bg-zinc-800 hover:text-red-400"
+              className="rounded-lg p-2 text-ink-muted transition-colors hover:bg-surface-raised hover:text-red-400"
             >
               <ArrowLeft className="h-4 w-4" />
             </button>
@@ -616,13 +616,13 @@ export function AdminPanel() {
         </div>
 
         {/* Monitoring tabs */}
-        <div className="flex border-b border-zinc-800/60">
+        <div className="flex border-b border-hairline">
           <button
             onClick={() => setViewMode("groups")}
             className={`flex flex-1 items-center justify-center gap-1.5 py-2.5 text-xs font-semibold transition-colors ${
               viewMode === "groups"
                 ? "border-b-2 border-red-500 text-red-300"
-                : "text-zinc-500 hover:text-zinc-300"
+                : "text-ink-muted hover:text-ink-text"
             }`}
           >
             <MessageSquare className="h-3.5 w-3.5" />
@@ -635,8 +635,8 @@ export function AdminPanel() {
             }}
             className={`flex flex-1 items-center justify-center gap-1.5 py-2.5 text-xs font-semibold transition-colors ${
               viewMode === "dms"
-                ? "border-b-2 border-purple-500 text-purple-300"
-                : "text-zinc-500 hover:text-zinc-300"
+                ? "border-b-2 border-purple-500 text-gossip"
+                : "text-ink-muted hover:text-ink-text"
             }`}
           >
             <MessageCircle className="h-3.5 w-3.5" />
@@ -647,29 +647,29 @@ export function AdminPanel() {
         {/* Stats mini panel */}
         {stats && (
           <div className="grid grid-cols-4 gap-2 p-3">
-            <div className="rounded-lg bg-zinc-900/60 px-2 py-2 text-center">
-              <p className="text-lg font-bold text-zinc-100">
+            <div className="rounded-lg bg-surface-raised px-2 py-2 text-center">
+              <p className="text-lg font-bold text-ink-text">
                 {stats.userCount}
               </p>
-              <p className="text-[10px] text-zinc-500">Users</p>
+              <p className="text-[10px] text-ink-muted">Users</p>
             </div>
-            <div className="rounded-lg bg-zinc-900/60 px-2 py-2 text-center">
-              <p className="text-lg font-bold text-zinc-100">
+            <div className="rounded-lg bg-surface-raised px-2 py-2 text-center">
+              <p className="text-lg font-bold text-ink-text">
                 {stats.groupCount}
               </p>
-              <p className="text-[10px] text-zinc-500">Groups</p>
+              <p className="text-[10px] text-ink-muted">Groups</p>
             </div>
-            <div className="rounded-lg bg-zinc-900/60 px-2 py-2 text-center">
-              <p className="text-lg font-bold text-zinc-100">
+            <div className="rounded-lg bg-surface-raised px-2 py-2 text-center">
+              <p className="text-lg font-bold text-ink-text">
                 {stats.messageCount}
               </p>
-              <p className="text-[10px] text-zinc-500">Msgs</p>
+              <p className="text-[10px] text-ink-muted">Msgs</p>
             </div>
-            <div className="rounded-lg bg-zinc-900/60 px-2 py-2 text-center">
-              <p className="text-lg font-bold text-zinc-100">
+            <div className="rounded-lg bg-surface-raised px-2 py-2 text-center">
+              <p className="text-lg font-bold text-ink-text">
                 {stats.dmCount}
               </p>
-              <p className="text-[10px] text-zinc-500">DMs</p>
+              <p className="text-[10px] text-ink-muted">DMs</p>
             </div>
           </div>
         )}
@@ -680,13 +680,13 @@ export function AdminPanel() {
             viewMode === "groups" ? "" : "hidden"
           }`}
         >
-          <p className="px-2 pb-2 text-xs font-semibold uppercase tracking-wider text-zinc-500">
+          <p className="px-2 pb-2 text-xs font-semibold uppercase tracking-wider text-ink-muted">
             All Groups
           </p>
           {!stats || stats.groups.length === 0 ? (
             <div className="px-2 py-8 text-center">
-              <MessageSquare className="mx-auto mb-2 h-8 w-8 text-zinc-600" />
-              <p className="text-sm text-zinc-500">No groups yet.</p>
+              <MessageSquare className="mx-auto mb-2 h-8 w-8 text-ink-muted" />
+              <p className="text-sm text-ink-muted">No groups yet.</p>
             </div>
           ) : (
             <div className="space-y-1">
@@ -697,21 +697,21 @@ export function AdminPanel() {
                   className={`flex w-full items-center gap-3 rounded-lg px-3 py-2.5 text-left transition-colors ${
                     selectedGroup === group.id
                       ? "bg-red-600/20 text-red-200"
-                      : "text-zinc-300 hover:bg-zinc-800/60"
+                      : "text-ink-text hover:bg-surface/70"
                   }`}
                 >
                   <div
                     className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-lg ${
                       selectedGroup === group.id
                         ? "bg-red-600/30"
-                        : "bg-zinc-800"
+                        : "bg-surface-raised"
                     }`}
                   >
                     <Hash className="h-4 w-4" />
                   </div>
                   <div className="min-w-0 flex-1">
                     <p className="truncate text-sm font-medium">{group.name}</p>
-                    <p className="text-xs text-zinc-500">
+                    <p className="text-xs text-ink-muted">
                       {group.memberCount} members · {group.messageCount} msgs
                     </p>
                   </div>
@@ -727,18 +727,18 @@ export function AdminPanel() {
             viewMode === "dms" ? "" : "hidden"
           }`}
         >
-          <p className="px-2 pb-2 text-xs font-semibold uppercase tracking-wider text-zinc-500">
+          <p className="px-2 pb-2 text-xs font-semibold uppercase tracking-wider text-ink-muted">
             Direct Messages
           </p>
           {dmListLoading ? (
             <div className="px-2 py-8 text-center">
-              <RefreshCw className="mx-auto mb-2 h-6 w-6 animate-spin text-zinc-600" />
-              <p className="text-sm text-zinc-500">Loading…</p>
+              <RefreshCw className="mx-auto mb-2 h-6 w-6 animate-spin text-ink-muted" />
+              <p className="text-sm text-ink-muted">Loading…</p>
             </div>
           ) : !dmList || dmList.length === 0 ? (
             <div className="px-2 py-8 text-center">
-              <MessageCircle className="mx-auto mb-2 h-8 w-8 text-zinc-600" />
-              <p className="text-sm text-zinc-500">No conversations yet.</p>
+              <MessageCircle className="mx-auto mb-2 h-8 w-8 text-ink-muted" />
+              <p className="text-sm text-ink-muted">No conversations yet.</p>
             </div>
           ) : (
             <div className="space-y-1">
@@ -752,20 +752,20 @@ export function AdminPanel() {
                     onClick={() => loadDmMessages(dm.id)}
                     className={`flex w-full items-center gap-3 rounded-lg px-3 py-2.5 text-left transition-colors ${
                       selectedDm === dm.id
-                        ? "bg-purple-600/20 text-purple-200"
-                        : "text-zinc-300 hover:bg-zinc-800/60"
+                        ? "bg-gossip/20 text-gossip"
+                        : "text-ink-text hover:bg-surface/70"
                     }`}
                   >
                     <div
                       className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-full ${
-                        selectedDm === dm.id ? "bg-purple-600/30" : "bg-zinc-800"
+                        selectedDm === dm.id ? "bg-gossip/30" : "bg-surface-raised"
                       }`}
                     >
                       <MessageCircle className="h-4 w-4" />
                     </div>
                     <div className="min-w-0 flex-1">
                       <p className="truncate text-sm font-medium">{label}</p>
-                      <p className="truncate text-xs text-zinc-500">
+                      <p className="truncate text-xs text-ink-muted">
                         {dm.lastMessage
                           ? dm.lastMessage.content || "Message unsent"
                           : "No messages"}{" "}
@@ -780,14 +780,14 @@ export function AdminPanel() {
         </div>
 
         {/* Refresh button */}
-        <div className="border-t border-zinc-800/60 p-3">
+        <div className="border-t border-hairline p-3">
           <button
             onClick={() => {
               refreshStats();
               if (viewMode === "dms") loadDmConversations();
             }}
             disabled={loading}
-            className="flex w-full items-center justify-center gap-2 rounded-lg border border-zinc-700 px-3 py-2 text-xs font-semibold text-zinc-300 transition-colors hover:bg-zinc-800 disabled:opacity-60"
+            className="flex w-full items-center justify-center gap-2 rounded-lg border border-hairline px-3 py-2 text-xs font-semibold text-ink-text transition-colors hover:bg-surface-raised disabled:opacity-60"
           >
             <RefreshCw className={`h-3.5 w-3.5 ${loading ? "animate-spin" : ""}`} />
             Refresh
@@ -796,12 +796,12 @@ export function AdminPanel() {
       </aside>
 
       {/* Main panel - Chat view of selected group */}
-      <main className="relative flex flex-1 flex-col bg-[#0a0612]">
+      <main className="relative flex flex-1 flex-col bg-ink">
         {/* Mobile top bar */}
-        <div className="safe-top flex items-center gap-3 border-b border-zinc-800/60 px-3 py-2 md:hidden">
+        <div className="safe-top flex items-center gap-3 border-b border-hairline px-3 py-2 md:hidden">
           <button
             onClick={() => setSidebarOpen(true)}
-            className="rounded-lg p-2 text-zinc-400 transition-colors hover:bg-zinc-800 hover:text-zinc-200"
+            className="rounded-lg p-2 text-ink-muted transition-colors hover:bg-surface-raised hover:text-ink-text"
             title="Open menu"
           >
             <Menu className="h-5 w-5" />
@@ -810,7 +810,7 @@ export function AdminPanel() {
             <div className="flex h-7 w-7 items-center justify-center rounded-md bg-gradient-to-br from-red-600 to-purple-600">
               <Hash className="h-3.5 w-3.5 text-white" />
             </div>
-            <h2 className="text-sm font-semibold text-zinc-100">
+            <h2 className="text-sm font-semibold text-ink-text">
               {viewMode === "dms"
                 ? dmMessages
                   ? dmMessages.members.map((m) => m.username).join(" ↔ ")
@@ -826,18 +826,18 @@ export function AdminPanel() {
           selectedDm ? (
             <>
               {/* DM chat header */}
-              <div className="flex items-center gap-3 border-b border-zinc-800/60 px-5 py-3">
-                <div className="flex h-10 w-10 items-center justify-center rounded-full bg-gradient-to-br from-purple-600 to-fuchsia-600">
-                  <MessageCircle className="h-5 w-5 text-white" />
+              <div className="flex items-center gap-3 border-b border-hairline px-5 py-3">
+                <div className="flex h-10 w-10 items-center justify-center rounded-full bg-surface-raised">
+                  <MessageCircle className="h-5 w-5 text-gossip" />
                 </div>
                 <div>
-                  <h2 className="text-sm font-semibold text-zinc-100">
+                  <h2 className="text-sm font-semibold text-ink-text">
                     {dmMessages
                       ? dmMessages.members.map((m) => m.username).join(" ↔ ") ||
                         "Direct message"
                       : "Loading..."}
                   </h2>
-                  <p className="text-xs text-zinc-500">
+                  <p className="text-xs text-ink-muted">
                     {dmMessages
                       ? `${dmMessages.messages.length} messages · read-only`
                       : "Loading messages..."}
@@ -852,7 +852,7 @@ export function AdminPanel() {
                 className="flex-1 overflow-y-auto px-3 py-4 sm:px-5"
               >
                 {dmLoading && !dmMessages ? (
-                  <div className="flex h-full items-center justify-center text-sm text-zinc-500">
+                  <div className="flex h-full items-center justify-center text-sm text-ink-muted">
                     Loading messages...
                   </div>
                 ) : dmError ? (
@@ -863,7 +863,7 @@ export function AdminPanel() {
                 ) : !dmMessages || dmMessages.messages.length === 0 ? (
                   <div className="flex h-full flex-col items-center justify-center text-center">
                     <Eye className="mb-3 h-10 w-10 text-zinc-700" />
-                    <p className="text-sm text-zinc-500">
+                    <p className="text-sm text-ink-muted">
                       No messages in this conversation. Admin is watching... 👁️
                     </p>
                   </div>
@@ -879,13 +879,13 @@ export function AdminPanel() {
             </>
           ) : (
             <div className="flex flex-1 flex-col items-center justify-center p-6 text-center">
-              <div className="mb-4 flex h-20 w-20 items-center justify-center rounded-3xl bg-gradient-to-br from-purple-600 to-fuchsia-600 shadow-xl shadow-purple-900/40">
-                <MessageCircle className="h-10 w-10 text-white" />
+              <div className="mb-4 flex h-20 w-20 items-center justify-center rounded-3xl bg-surface-raised shadow-lg shadow-black/30">
+                <MessageCircle className="h-10 w-10 text-gossip" />
               </div>
-              <h2 className="text-xl font-semibold text-zinc-200">
+              <h2 className="text-xl font-semibold text-ink-text">
                 Direct Message Monitoring
               </h2>
-              <p className="mt-2 max-w-sm text-sm text-zinc-500">
+              <p className="mt-2 max-w-sm text-sm text-ink-muted">
                 Select a conversation from the sidebar to view it read-only.
                 Users will never know {"you're"} watching. 👁️
               </p>
@@ -894,16 +894,16 @@ export function AdminPanel() {
         ) : selectedGroup ? (
           <>
             {/* Group chat header */}
-            <div className="flex items-center justify-between border-b border-zinc-800/60 px-5 py-3">
+            <div className="flex items-center justify-between border-b border-hairline px-5 py-3">
               <div className="flex items-center gap-3">
                 <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-gradient-to-br from-red-600 to-purple-600">
                   <Hash className="h-5 w-5 text-white" />
                 </div>
                 <div>
-                  <h2 className="text-sm font-semibold text-zinc-100">
+                  <h2 className="text-sm font-semibold text-ink-text">
                     {groupMessages?.name || "Loading..."}
                   </h2>
-                  <p className="text-xs text-zinc-500">
+                  <p className="text-xs text-ink-muted">
                     {groupMessages?.ownerUsername
                       ? `Owner: ${groupMessages.ownerUsername} · ${groupMessages.messages.length} messages`
                       : "Loading messages..."}
@@ -920,7 +920,7 @@ export function AdminPanel() {
                         )!;
                         handleViewMembers(g.id);
                       }}
-                      className="flex items-center gap-1.5 rounded-lg border border-purple-600/40 bg-purple-600/10 px-3 py-1.5 text-xs font-semibold text-purple-300 transition-colors hover:bg-purple-600/20"
+                      className="flex items-center gap-1.5 rounded-lg border border-gossip/40 bg-gossip/10 px-3 py-1.5 text-xs font-semibold text-gossip transition-colors hover:bg-gossip/20"
                       title="View members"
                     >
                       <Users className="h-3.5 w-3.5" />
@@ -947,7 +947,7 @@ export function AdminPanel() {
               className="flex-1 overflow-y-auto px-3 py-4 sm:px-5"
             >
               {messagesLoading && !groupMessages ? (
-                <div className="flex h-full items-center justify-center text-sm text-zinc-500">
+                <div className="flex h-full items-center justify-center text-sm text-ink-muted">
                   Loading messages...
                 </div>
               ) : messagesError ? (
@@ -958,7 +958,7 @@ export function AdminPanel() {
               ) : !groupMessages || groupMessages.messages.length === 0 ? (
                 <div className="flex h-full flex-col items-center justify-center text-center">
                   <Eye className="mb-3 h-10 w-10 text-zinc-700" />
-                  <p className="text-sm text-zinc-500">
+                  <p className="text-sm text-ink-muted">
                     No messages in this group. Admin is watching... 👁️
                   </p>
                 </div>
@@ -977,10 +977,10 @@ export function AdminPanel() {
             <div className="mb-4 flex h-20 w-20 items-center justify-center rounded-3xl bg-gradient-to-br from-red-600 to-purple-600 shadow-xl shadow-red-900/40">
               <Eye className="h-10 w-10 text-white" />
             </div>
-            <h2 className="text-xl font-semibold text-zinc-200">
+            <h2 className="text-xl font-semibold text-ink-text">
               Secret Admin Monitoring
             </h2>
-            <p className="mt-2 max-w-sm text-sm text-zinc-500">
+            <p className="mt-2 max-w-sm text-sm text-ink-muted">
               Select a group from the sidebar to view its chats incognito.
               Users will never know {"you're"} watching. 👁️
             </p>
@@ -995,21 +995,21 @@ export function AdminPanel() {
           onClick={() => setMembersModal(null)}
         >
           <div
-            className="w-full max-w-lg animate-fade-in rounded-2xl border border-zinc-800 bg-[#120a1f] p-6 shadow-2xl"
+            className="w-full max-w-lg animate-fade-in rounded-2xl border border-hairline bg-surface-raised p-6 shadow-2xl"
             onClick={(e) => e.stopPropagation()}
           >
             <div className="mb-4 flex items-center justify-between">
               <div>
-                <h3 className="text-lg font-semibold text-zinc-100">
+                <h3 className="text-lg font-semibold text-ink-text">
                   Members of {membersModal.name}
                 </h3>
-                <p className="mt-1 text-xs text-zinc-500">
+                <p className="mt-1 text-xs text-ink-muted">
                   {membersModal.members.length + 1} total (including owner)
                 </p>
               </div>
               <button
                 onClick={() => setMembersModal(null)}
-                className="rounded-lg p-1.5 text-zinc-500 transition-colors hover:bg-zinc-800 hover:text-zinc-300"
+                className="rounded-lg p-1.5 text-ink-muted transition-colors hover:bg-surface-raised hover:text-ink-text"
               >
                 <X className="h-4 w-4" />
               </button>
@@ -1022,27 +1022,27 @@ export function AdminPanel() {
             )}
 
             {membersLoading ? (
-              <div className="py-8 text-center text-sm text-zinc-500">
+              <div className="py-8 text-center text-sm text-ink-muted">
                 Loading members...
               </div>
             ) : (
               <div className="max-h-[50vh] overflow-y-auto space-y-2">
                 {/* Owner */}
-                <div className="flex items-center justify-between rounded-xl border border-purple-600/30 bg-purple-600/10 px-4 py-3">
+                <div className="flex items-center justify-between rounded-xl border border-gossip/30 bg-gossip/10 px-4 py-3">
                   <div className="flex items-center gap-3">
-                    <div className="flex h-8 w-8 items-center justify-center rounded-full bg-gradient-to-br from-purple-600 to-fuchsia-600 text-xs font-bold text-white">
+                    <div className="flex h-8 w-8 items-center justify-center rounded-full bg-gossip-deep text-xs font-bold text-white">
                       {membersModal.owner.username.charAt(0).toUpperCase()}
                     </div>
                     <div>
-                      <p className="text-sm font-medium text-zinc-100">
+                      <p className="text-sm font-medium text-ink-text">
                         {membersModal.owner.username}
                       </p>
-                      <p className="text-[10px] font-semibold uppercase tracking-wider text-purple-400">
+                      <p className="text-[10px] font-semibold uppercase tracking-wider text-gossip">
                         Owner
                       </p>
                     </div>
                   </div>
-                  <span className="rounded bg-purple-600/20 px-2 py-0.5 text-[10px] font-semibold text-purple-300">
+                  <span className="rounded bg-gossip/20 px-2 py-0.5 text-[10px] font-semibold text-gossip">
                     OWNER
                   </span>
                 </div>
@@ -1051,17 +1051,17 @@ export function AdminPanel() {
                 {membersModal.members.map((member) => (
                   <div
                     key={member.id}
-                    className="flex items-center justify-between rounded-xl border border-zinc-800 px-4 py-3 transition-colors hover:bg-zinc-800/30"
+                    className="flex items-center justify-between rounded-xl border border-hairline px-4 py-3 transition-colors hover:bg-surface-raised/30"
                   >
                     <div className="flex items-center gap-3">
-                      <div className="flex h-8 w-8 items-center justify-center rounded-full bg-zinc-800 text-xs font-bold text-zinc-300">
+                      <div className="flex h-8 w-8 items-center justify-center rounded-full bg-surface-raised text-xs font-bold text-ink-text">
                         {member.username.charAt(0).toUpperCase()}
                       </div>
                       <div>
-                        <p className="text-sm font-medium text-zinc-100">
+                        <p className="text-sm font-medium text-ink-text">
                           {member.username}
                         </p>
-                        <p className="text-[10px] text-zinc-500">
+                        <p className="text-[10px] text-ink-muted">
                           Joined {new Date(member.joinedAt).toLocaleDateString()}
                         </p>
                       </div>

@@ -57,14 +57,14 @@ describe("GroupSidebar", () => {
     expect(screen.getByText("chismosa")).toBeTruthy();
     expect(screen.getByText("Chismis Central")).toBeTruthy();
     expect(screen.getByText("Tea Time")).toBeTruthy();
-    expect(screen.getByText("5 members · 42 msgs")).toBeTruthy();
+    expect(screen.getByText("5 members")).toBeTruthy();
   });
 
   it("highlights the selected group and marks the owner", () => {
     makeSidebar();
     const selected = screen.getByText("Chismis Central").closest("button");
-    expect(selected!.className).toContain("bg-purple-600/20");
-    expect(screen.getByText("OWNER")).toBeTruthy();
+    expect(selected!.className).toContain("bg-surface-raised");
+    expect(screen.getByText("Owner")).toBeTruthy();
   });
 
   it("shows an empty state when there are no groups", () => {
@@ -101,7 +101,7 @@ describe("GroupSidebar", () => {
   it("does not highlight any group when none is selected", () => {
     makeSidebar({ selectedGroupId: null });
     const button = screen.getByText("Chismis Central").closest("button");
-    expect(button!.className).not.toContain("bg-purple-600/20");
+    expect(button!.className).not.toContain("bg-surface-raised");
   });
 
   it("shows an unread badge on groups with unread messages", () => {

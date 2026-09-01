@@ -99,7 +99,7 @@ export function SearchModal({
     return (
       <>
         {content.slice(0, idx)}
-        <mark className="rounded bg-purple-500/40 px-0.5 text-purple-200">
+        <mark className="rounded bg-purple-500/40 px-0.5 text-gossip">
           {content.slice(idx, idx + q.length)}
         </mark>
         {content.slice(idx + q.length)}
@@ -151,19 +151,19 @@ function SearchModalView({
     body = <p className="px-4 py-6 text-center text-sm text-red-400">{error}</p>;
   } else if (q.length < 2) {
     body = (
-      <p className="px-4 py-6 text-center text-sm text-zinc-500">
+      <p className="px-4 py-6 text-center text-sm text-ink-muted">
         Type at least 2 characters to search.
       </p>
     );
   } else if (results === null) {
     body = (
-      <p className="px-4 py-6 text-center text-sm text-zinc-500">
+      <p className="px-4 py-6 text-center text-sm text-ink-muted">
         {loading ? "Searching…" : ""}
       </p>
     );
   } else if (results.length === 0) {
     body = (
-      <p className="px-4 py-6 text-center text-sm text-zinc-500">
+      <p className="px-4 py-6 text-center text-sm text-ink-muted">
         No messages found for &quot;{q}&quot;.
       </p>
     );
@@ -174,17 +174,17 @@ function SearchModalView({
           <li key={m.id}>
             <button
               onClick={() => onJumpToMessage(m.id)}
-              className="w-full rounded-lg px-3 py-2.5 text-left transition-colors hover:bg-zinc-800/70"
+              className="w-full rounded-lg px-3 py-2.5 text-left transition-colors hover:bg-surface-raised/70"
             >
               <div className="flex items-baseline justify-between gap-3">
-                <span className="truncate text-xs font-semibold text-purple-400">
+                <span className="truncate text-xs font-semibold text-gossip">
                   {m.username}
                 </span>
-                <span className="shrink-0 text-[10px] text-zinc-600">
+                <span className="shrink-0 text-[10px] text-ink-muted">
                   {formatTime(m.createdAt)}
                 </span>
               </div>
-              <p className="mt-0.5 line-clamp-2 text-sm text-zinc-300">
+              <p className="mt-0.5 line-clamp-2 text-sm text-ink-text">
                 {highlighted(m.content)}
               </p>
             </button>
@@ -200,12 +200,12 @@ function SearchModalView({
       onClick={onClose}
     >
       <div
-        className="w-full max-w-lg animate-fade-in rounded-2xl border border-zinc-800 bg-[#120a1f] shadow-2xl"
+        className="w-full max-w-lg animate-fade-in rounded-2xl border border-hairline bg-surface-raised shadow-2xl"
         onClick={(e) => e.stopPropagation()}
       >
         {/* Search input row */}
-        <div className="flex items-center gap-3 border-b border-zinc-800 px-4 py-3">
-          <Search className="h-4 w-4 shrink-0 text-zinc-500" />
+        <div className="flex items-center gap-3 border-b border-hairline px-4 py-3">
+          <Search className="h-4 w-4 shrink-0 text-ink-muted" />
           <input
             ref={inputRef}
             type="text"
@@ -214,14 +214,14 @@ function SearchModalView({
             onKeyDown={(e) => e.key === "Escape" && onClose()}
             placeholder="Search in this group…"
             maxLength={100}
-            className="flex-1 bg-transparent text-sm text-zinc-100 placeholder-zinc-500 outline-none"
+            className="flex-1 bg-transparent text-sm text-ink-text placeholder:text-ink-muted outline-none"
           />
           {loading && q.length >= 2 && (
-            <Loader2 className="h-4 w-4 shrink-0 animate-spin text-zinc-500" />
+            <Loader2 className="h-4 w-4 shrink-0 animate-spin text-ink-muted" />
           )}
           <button
             onClick={onClose}
-            className="rounded-lg px-2 py-1 text-xs text-zinc-500 transition-colors hover:bg-zinc-800 hover:text-zinc-300"
+            className="rounded-lg px-2 py-1 text-xs text-ink-muted transition-colors hover:bg-surface-raised hover:text-ink-text"
           >
             Esc
           </button>

@@ -1,14 +1,16 @@
 // Generate a consistent color from a group name (for avatars)
 
+// Muted duotone gradients for chat avatars — quiet, so the gossip-pink
+// message bubbles remain the only bold color on screen.
 export const GROUP_COLORS = [
-  "from-purple-600 to-fuchsia-600",
-  "from-blue-600 to-cyan-500",
-  "from-emerald-600 to-teal-500",
-  "from-orange-500 to-amber-500",
-  "from-pink-600 to-rose-500",
-  "from-indigo-600 to-violet-500",
-  "from-red-600 to-orange-500",
-  "from-teal-600 to-emerald-500",
+  "from-rose-500 to-pink-500",
+  "from-sky-600 to-indigo-500",
+  "from-teal-500 to-emerald-500",
+  "from-amber-500 to-orange-500",
+  "from-violet-600 to-purple-500",
+  "from-cyan-600 to-sky-500",
+  "from-fuchsia-600 to-rose-500",
+  "from-lime-600 to-teal-500",
 ];
 
 export function groupColor(name: string): string {

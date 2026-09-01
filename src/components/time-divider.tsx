@@ -49,13 +49,11 @@ export function chatDividerLabel(
   return date.toLocaleTimeString([], { hour: "numeric", minute: "2-digit" });
 }
 
-/** Centered, pill-styled time divider (Facebook Messenger style). */
+/** Centered time divider (Facebook Messenger style) — quiet, sentence case. */
 export function TimeDivider({ label }: { label: string }) {
   return (
-    <div className="flex justify-center py-1" role="separator">
-      <span className="rounded-full bg-zinc-800/70 px-3 py-1 text-[10px] font-semibold uppercase tracking-wide text-zinc-400">
-        {label}
-      </span>
+    <div className="py-1.5 text-center text-xs text-ink-muted" role="separator">
+      {label}
     </div>
   );
 }

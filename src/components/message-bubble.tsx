@@ -457,7 +457,7 @@ export const MessageBubble = memo(function MessageBubble({
   return (
     <div
       data-message-id={msg.id}
-      className={`group msg-bubble flex ${
+      className={`group msg-bubble animate-bubble-in flex ${
         isOwn ? "justify-end" : "justify-start"
       } ${groupedReactions.length > 0 ? "pb-3" : ""}`}
     >
@@ -468,7 +468,7 @@ export const MessageBubble = memo(function MessageBubble({
       >
         <p
           className={`mb-1 text-xs font-medium ${
-            isOwn ? "text-right text-fuchsia-400" : "text-purple-400"
+            isOwn ? "text-right text-gossip" : "text-ink-muted"
           }`}
         >
           {isOwn ? "You" : msg.username}
@@ -481,12 +481,12 @@ export const MessageBubble = memo(function MessageBubble({
           onPointerCancel={handlePointerCancel}
           onClick={handleBubbleClick}
           onContextMenu={handleContextMenu}
-          className={`msg-bubble-interactive relative rounded-2xl px-4 pt-2.5 pb-3 text-sm transition-transform duration-300 [transition-timing-function:cubic-bezier(0.25,1,0.5,1)] select-none ${
+          className={`msg-bubble-interactive relative rounded-[18px] px-4 pt-2.5 pb-3 text-sm transition-transform duration-300 [transition-timing-function:cubic-bezier(0.25,1,0.5,1)] select-none ${
             msg.deletedAt
-              ? "border border-dashed border-zinc-700 italic text-zinc-500"
+              ? "border border-dashed border-hairline italic text-ink-muted"
               : isOwn
-              ? "rounded-br-sm bg-gradient-to-r from-purple-600 to-fuchsia-600 text-white"
-              : "rounded-bl-sm bg-zinc-800 text-zinc-100"
+              ? "rounded-br-[6px] bg-gossip-deep text-white"
+              : "rounded-bl-[6px] bg-surface text-ink-text"
           }`}
           style={{
             transform: `translateX(${swipeX}px)`,
@@ -499,7 +499,7 @@ export const MessageBubble = memo(function MessageBubble({
               className={`mb-2 flex items-start gap-1.5 border-l-2 pl-2 text-xs ${
                 isOwn
                   ? "border-white/40 text-white/80"
-                  : "border-purple-400/60 text-zinc-400"
+                  : "border-gossip/60 text-ink-muted"
               }`}
             >
               <CornerUpLeft className="mt-0.5 h-3 w-3 shrink-0" />
@@ -577,8 +577,8 @@ export const MessageBubble = memo(function MessageBubble({
                   }}
                   className={`flex items-center gap-0.5 rounded-full border px-1.5 py-0.5 text-xs shadow-md transition-transform hover:scale-105 ${
                     reactions.some((r) => r.userId === userId)
-                      ? "border-purple-400 bg-purple-600 text-white"
-                      : "border-zinc-700 bg-[#150d24] text-zinc-200"
+                      ? "border-gossip bg-gossip-deep text-white"
+                      : "border-hairline bg-surface-raised text-ink-text"
                   } ${i > 0 ? "-ml-1.5" : ""}`}
                   title={`${reactions.map((r) => r.username).join(", ")}`}
                 >
@@ -593,7 +593,7 @@ export const MessageBubble = memo(function MessageBubble({
         {/* Read receipt — below the bubble (in flow) so it can never overlap
             the message text or the reaction badges */}
         {isOwn && !msg.deletedAt && (msg.seenCount ?? 0) > 0 && (
-          <p className="mt-0.5 pr-1 text-right text-[10px] leading-none text-emerald-400">
+          <p className="mt-0.5 pr-1 text-right text-[10px] leading-none text-gossip">
             Seen by {msg.seenCount}
           </p>
         )}
@@ -635,7 +635,7 @@ export const MessageBubble = memo(function MessageBubble({
               >
                 {/* Action menu - stack above the pill */}
                 <div
-                  className={`mb-2 flex items-center gap-1 rounded-2xl bg-white p-1 shadow-lg ${
+                  className={`mb-2 flex items-center gap-1 rounded-2xl bg-surface-raised p-1 shadow-xl ${
                     overlayAnchor.below ? "flex-row" : "flex-col"
                   } animate-reaction-picker`}
                 >
@@ -646,7 +646,7 @@ export const MessageBubble = memo(function MessageBubble({
                       e.stopPropagation();
                       setEmojiPickerOpen(true);
                     }}
-                    className="flex items-center gap-1.5 rounded-xl px-3 py-2 text-sm font-medium text-gray-800 transition-colors hover:bg-gray-100"
+                    className="flex items-center gap-1.5 rounded-xl px-3 py-2 text-sm font-medium text-ink-text transition-colors hover:bg-white/10"
                   >
                     <Smile className="h-4 w-4" /> React
                   </button>
@@ -658,7 +658,7 @@ export const MessageBubble = memo(function MessageBubble({
                         onReply(msg);
                         setOverlayOpen(false);
                       }}
-                      className="flex items-center gap-1.5 rounded-xl px-3 py-2 text-sm font-medium text-gray-800 transition-colors hover:bg-gray-100"
+                      className="flex items-center gap-1.5 rounded-xl px-3 py-2 text-sm font-medium text-ink-text transition-colors hover:bg-white/10"
                     >
                       <CornerUpLeft className="h-4 w-4" /> Reply
                     </button>
@@ -672,7 +672,7 @@ export const MessageBubble = memo(function MessageBubble({
                           onReply(msg);
                           setOverlayOpen(false);
                         }}
-                        className="flex items-center gap-1.5 rounded-xl px-3 py-2 text-sm font-medium text-gray-800 transition-colors hover:bg-gray-100"
+                        className="flex items-center gap-1.5 rounded-xl px-3 py-2 text-sm font-medium text-ink-text transition-colors hover:bg-white/10"
                       >
                         <CornerUpLeft className="h-4 w-4" /> Reply
                       </button>
@@ -682,7 +682,7 @@ export const MessageBubble = memo(function MessageBubble({
                           e.stopPropagation();
                           startEditing();
                         }}
-                        className="flex items-center gap-1.5 rounded-xl px-3 py-2 text-sm font-medium text-gray-800 transition-colors hover:bg-gray-100"
+                        className="flex items-center gap-1.5 rounded-xl px-3 py-2 text-sm font-medium text-ink-text transition-colors hover:bg-white/10"
                       >
                         <Pencil className="h-4 w-4" /> Edit
                       </button>
@@ -693,7 +693,7 @@ export const MessageBubble = memo(function MessageBubble({
                           onDelete(msg.id);
                           setOverlayOpen(false);
                         }}
-                        className="flex items-center gap-1.5 rounded-xl px-3 py-2 text-sm font-medium text-red-600 transition-colors hover:bg-red-50"
+                        className="flex items-center gap-1.5 rounded-xl px-3 py-2 text-sm font-medium text-red-400 transition-colors hover:bg-red-500/10"
                       >
                         <Trash2 className="h-4 w-4" /> Delete
                       </button>
@@ -703,7 +703,7 @@ export const MessageBubble = memo(function MessageBubble({
 
                 {/* White reaction pill */}
                 <div
-                  className="flex items-center gap-1 rounded-[30px] bg-white px-3 py-2 animate-reaction-picker"
+                  className="flex items-center gap-1 rounded-[30px] bg-surface-raised px-3 py-2 animate-reaction-picker"
                   style={{ boxShadow: "0px 8px 24px rgba(0,0,0,0.18)" }}
                 >
                   {MESSENGER_REACTIONS.map((emoji, index) => (
@@ -731,7 +731,7 @@ export const MessageBubble = memo(function MessageBubble({
                       e.stopPropagation();
                       setEmojiPickerOpen(true);
                     }}
-                    className="flex items-center justify-center rounded-full border border-gray-200 p-1 text-lg text-gray-600 transition-colors hover:bg-gray-100"
+                    className="flex items-center justify-center rounded-full border border-hairline p-1 text-lg text-ink-muted transition-colors hover:bg-white/10"
                     title="More emojis"
                   >
                     <Plus className="h-4 w-4" />
@@ -750,15 +750,15 @@ export const MessageBubble = memo(function MessageBubble({
               <div className="fixed inset-0 z-[80] flex items-center justify-center bg-black/50 p-4">
                 <div
                   ref={emojiPickerRef}
-                  className="flex max-h-[88dvh] w-full max-w-sm flex-col rounded-2xl border border-zinc-700 bg-[#150d24] shadow-2xl"
+                  className="flex max-h-[88dvh] w-full max-w-sm flex-col rounded-2xl border border-hairline bg-surface-raised shadow-2xl"
                   onClick={(e) => e.stopPropagation()}
                 >
                   {/* Header */}
                   <div className="flex items-center justify-between border-b border-zinc-700 px-4 py-3">
-                    <h3 className="font-semibold text-zinc-200">React with emoji</h3>
+                    <h3 className="font-semibold text-ink-text">React with emoji</h3>
                     <button
                       onClick={() => setEmojiPickerOpen(false)}
-                      className="rounded-lg p-1 text-zinc-400 hover:bg-zinc-700 hover:text-zinc-200"
+                      className="rounded-lg p-1 text-ink-muted hover:bg-white/10 hover:text-ink-text"
                     >
                       <X className="h-5 w-5" />
                     </button>
@@ -767,14 +767,14 @@ export const MessageBubble = memo(function MessageBubble({
                   {/* Search */}
                   <div className="px-4 py-3">
                     <div className="relative">
-                      <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-zinc-500" />
+                      <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-ink-muted" />
                       <input
                         ref={emojiSearchRef}
                         type="text"
                         placeholder="Search emoji..."
                         value={emojiSearchQuery}
                         onChange={(e) => setEmojiSearchQuery(e.target.value)}
-                        className="w-full rounded-lg border border-zinc-600 bg-zinc-800 py-2 pl-10 pr-4 text-sm text-zinc-200 placeholder-zinc-500 focus:border-purple-500 focus:outline-none"
+                        className="w-full rounded-lg border border-hairline bg-surface py-2 pl-10 pr-4 text-sm text-ink-text placeholder:text-ink-muted focus:border-gossip focus:outline-none"
                       />
                     </div>
                   </div>
@@ -786,7 +786,7 @@ export const MessageBubble = memo(function MessageBubble({
                           <button
                             key={emoji}
                             onClick={() => handleSelectEmoji(emoji)}
-                            className="rounded-lg p-2 text-xl transition-colors hover:bg-zinc-700"
+                            className="rounded-lg p-2 text-xl transition-colors hover:bg-white/10"
                           >
                             {emoji}
                           </button>
@@ -797,15 +797,15 @@ export const MessageBubble = memo(function MessageBubble({
 
                   {/* Category Tabs (hidden while searching) */}
                   {!emojiSearchQuery && (
-                    <div className="flex gap-1 overflow-x-auto border-b border-zinc-700 px-4 pb-2">
+                    <div className="flex gap-1 overflow-x-auto border-b border-hairline px-4 pb-2">
                       {EMOJI_CATEGORIES.map((category, index) => (
                         <button
                           key={category.name}
                           onClick={() => setActiveEmojiCategory(index)}
                           className={`flex shrink-0 items-center gap-1 rounded-lg px-3 py-1.5 text-sm transition-colors ${
                             activeEmojiCategory === index
-                              ? "bg-purple-600 text-white"
-                              : "text-zinc-400 hover:bg-zinc-700 hover:text-zinc-200"
+                              ? "bg-gossip-deep text-white"
+                              : "text-ink-muted hover:bg-white/10 hover:text-ink-text"
                           }`}
                         >
                           <span>{category.icon}</span>
@@ -824,14 +824,14 @@ export const MessageBubble = memo(function MessageBubble({
                             <button
                               key={emoji}
                               onClick={() => handleSelectEmoji(emoji)}
-                              className="rounded-lg p-2 text-xl transition-colors hover:bg-zinc-700"
+                              className="rounded-lg p-2 text-xl transition-colors hover:bg-white/10"
                             >
                               {emoji}
                             </button>
                           ))}
                         </div>
                       ) : (
-                        <p className="py-8 text-center text-zinc-500">
+                        <p className="py-8 text-center text-ink-muted">
                           No emoji found for &quot;{emojiSearchQuery}&quot;
                         </p>
                       )
@@ -841,7 +841,7 @@ export const MessageBubble = memo(function MessageBubble({
                           <button
                             key={emoji}
                             onClick={() => handleSelectEmoji(emoji)}
-                            className="rounded-lg p-2 text-xl transition-colors hover:bg-zinc-700"
+                            className="rounded-lg p-2 text-xl transition-colors hover:bg-white/10"
                           >
                             {emoji}
                           </button>

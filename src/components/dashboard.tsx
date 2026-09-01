@@ -418,21 +418,21 @@ export function Dashboard({
       />
 
       {/* Right Panel - Chat */}
-      <main className="relative flex flex-1 flex-col bg-[#0a0612]">
+      <main className="relative flex flex-1 flex-col bg-ink">
         {/* Mobile top bar with hamburger menu */}
-        <div className="safe-top flex items-center gap-3 border-b border-zinc-800/60 px-3 py-2 md:hidden">
+        <div className="safe-top flex items-center gap-3 border-b border-hairline px-3 py-2 md:hidden">
           <button
             onClick={() => setSidebarOpen(true)}
-            className="rounded-lg p-2 text-zinc-400 transition-colors hover:bg-zinc-800 hover:text-zinc-200"
+            className="rounded-lg p-2 text-ink-muted transition-colors hover:bg-surface-raised hover:text-ink-text"
             title="Open menu"
           >
             <Menu className="h-5 w-5" />
           </button>
           <div className="flex items-center gap-2">
-            <div className="flex h-7 w-7 items-center justify-center rounded-md bg-gradient-to-br from-purple-600 to-fuchsia-600">
-              <Hash className="h-3.5 w-3.5 text-white" />
+            <div className="flex h-7 w-7 items-center justify-center rounded-md bg-surface-raised">
+              <Hash className="h-3.5 w-3.5 text-gossip" />
             </div>
-            <h2 className="text-sm font-semibold text-zinc-100">
+            <h2 className="text-sm font-semibold text-ink-text">
               {activeDm
                 ? activeDm.otherUser.username
                 : selectedGroup
@@ -452,7 +452,7 @@ export function Dashboard({
         ) : selectedGroup ? (
           <>
             {/* Chat header */}
-            <div className="flex items-center justify-between border-b border-zinc-800/60 px-5 py-3">
+            <div className="flex items-center justify-between border-b border-hairline px-5 py-3">
               <div className="flex items-center gap-3">
                 <div
                   className={`flex h-10 w-10 items-center justify-center rounded-lg bg-gradient-to-br ${groupColor(
@@ -464,10 +464,10 @@ export function Dashboard({
                   </span>
                 </div>
                 <div>
-                  <h2 className="text-sm font-semibold text-zinc-100">
+                  <h2 className="text-sm font-semibold text-ink-text">
                     {selectedGroup.name}
                   </h2>
-                  <p className="text-xs text-zinc-500">
+                  <p className="text-xs text-ink-muted">
                     {selectedGroup.memberCount} members
                     {onlineCount > 0 && (
                       <span className="ml-1.5">
@@ -483,7 +483,7 @@ export function Dashboard({
               <div className="flex items-center gap-2">
                 <button
                   onClick={() => setShowSearchModal(true)}
-                  className="rounded-lg p-2 text-zinc-400 transition-colors hover:bg-zinc-800 hover:text-zinc-200"
+                  className="rounded-lg p-2 text-ink-muted transition-colors hover:bg-surface-raised hover:text-ink-text"
                   title="Search messages"
                 >
                   <Search className="h-4 w-4" />
@@ -492,7 +492,7 @@ export function Dashboard({
                   <>
                     <button
                       onClick={() => setShowInviteModal(true)}
-                      className="flex items-center gap-1.5 rounded-lg border border-purple-600/40 bg-purple-600/10 px-3 py-1.5 text-xs font-semibold text-purple-300 transition-colors hover:bg-purple-600/20"
+                      className="flex items-center gap-1.5 rounded-lg border border-gossip/40 bg-gossip/10 px-3 py-1.5 text-xs font-semibold text-gossip transition-colors hover:bg-gossip/20"
                     >
                       <Copy className="h-3.5 w-3.5" />
                       <span className="hidden sm:inline">Invite Code</span>
@@ -521,7 +521,7 @@ export function Dashboard({
                         name: selectedGroup.name,
                       })
                     }
-                    className="flex items-center gap-1.5 rounded-lg border border-zinc-700 px-3 py-1.5 text-xs font-semibold text-zinc-300 transition-colors hover:bg-zinc-800"
+                    className="flex items-center gap-1.5 rounded-lg border border-hairline px-3 py-1.5 text-xs font-semibold text-ink-text transition-colors hover:bg-surface-raised"
                     title="Leave group"
                   >
                     <LogOut className="h-3.5 w-3.5" />
@@ -540,7 +540,7 @@ export function Dashboard({
               {messages.length === 0 ? (
                 <div className="flex h-full flex-col items-center justify-center text-center">
                   <MessageSquare className="mb-3 h-10 w-10 text-zinc-700" />
-                  <p className="text-sm text-zinc-500">
+                  <p className="text-sm text-ink-muted">
                     No messages yet. Start the chismis! 🫢
                   </p>
                 </div>
@@ -554,7 +554,7 @@ export function Dashboard({
                   )}
                   {/* All caught up indicator */}
                   {!hasMore && messages.length > 0 && (
-                    <p className="py-2 text-center text-xs text-zinc-600">
+                    <p className="py-2 text-center text-xs text-ink-muted">
                       You&apos;re all caught up
                     </p>
                   )}
@@ -580,7 +580,11 @@ export function Dashboard({
                   })}
                   {/* Typing indicator — shows who is typing */}
                   {typingUsers.size > 0 && (
-                    <div className="px-1 py-2 text-xs text-zinc-400 animate-pulse">
+                    <div className="flex items-center gap-2 px-1 py-2 text-xs text-ink-muted">
+                      <span
+                        aria-hidden
+                        className="tea-pulse h-2 w-2 shrink-0 rounded-full bg-tea shadow-[0_0_10px_2px_rgba(246,185,59,0.4)]"
+                      />
                       {formatTypingIndicator([...typingUsers.values()])}
                     </div>
                   )}
@@ -593,7 +597,7 @@ export function Dashboard({
             {!isNearBottom && messages.length > 0 && (
               <button
                 onClick={() => scrollToBottom()}
-                className="absolute bottom-28 left-1/2 z-10 flex h-10 w-10 -translate-x-1/2 items-center justify-center rounded-full border border-zinc-700 bg-[#141019] text-zinc-300 shadow-xl transition-colors hover:bg-zinc-800 hover:text-white"
+                className="absolute bottom-28 left-1/2 z-10 flex h-10 w-10 -translate-x-1/2 items-center justify-center rounded-full border border-hairline bg-surface-raised text-ink-muted shadow-xl transition-colors hover:text-gossip"
                 title="Jump to latest messages"
               >
                 <ChevronDown className="h-5 w-5" />
@@ -618,13 +622,13 @@ export function Dashboard({
 
             {/* Reply preview bar */}
             {replyTo && (
-              <div className="border-t border-zinc-800/60 bg-[#120a1f] px-4 py-2">
+              <div className="border-t border-hairline bg-surface-raised px-4 py-2">
                 <div className="flex items-center justify-between">
-                  <div className="flex items-center gap-2 text-xs text-zinc-400">
-                    <CornerUpLeft className="h-3 w-3 text-purple-400" />
+                  <div className="flex items-center gap-2 text-xs text-ink-muted">
+                    <CornerUpLeft className="h-3 w-3 text-gossip" />
                     <span>
                       Replying to{" "}
-                      <span className="font-semibold text-purple-300">
+                      <span className="font-semibold text-gossip">
                         {replyTo.username}
                       </span>
                       : <span className="truncate">{replyTo.content}</span>
@@ -632,7 +636,7 @@ export function Dashboard({
                   </div>
                   <button
                     onClick={() => setReplyTo(null)}
-                    className="rounded p-0.5 text-zinc-500 transition-colors hover:text-zinc-300"
+                    className="rounded p-0.5 text-ink-muted transition-colors hover:text-ink-text"
                     title="Cancel reply"
                   >
                     <X className="h-3.5 w-3.5" />
@@ -644,7 +648,7 @@ export function Dashboard({
             {/* Message input */}
             <form
               onSubmit={handleSendMessage}
-              className="safe-bottom border-t border-zinc-800/60 p-3 sm:p-4"
+              className="safe-bottom border-t border-hairline p-3 sm:p-4"
             >
               <div className="flex items-center gap-2">
                 <input
@@ -653,12 +657,12 @@ export function Dashboard({
                   onChange={(e) => handleInputChange(e.target.value)}
                   placeholder={`Message #${selectedGroup.name}…`}
                   maxLength={2000}
-                  className="flex-1 rounded-xl border border-zinc-700/60 bg-zinc-900/60 px-4 py-2.5 text-sm text-zinc-100 placeholder-zinc-500 outline-none transition-colors focus:border-purple-500 focus:ring-2 focus:ring-purple-500/20"
+                  className="flex-1 rounded-xl border border-hairline bg-surface-raised px-4 py-2.5 text-sm text-ink-text placeholder:text-ink-muted outline-none transition-colors focus:border-gossip focus:ring-2 focus:ring-gossip/20"
                 />
                 <button
                   type="submit"
                   disabled={!messageInput.trim()}
-                  className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-gradient-to-r from-purple-600 to-fuchsia-600 text-white transition-all hover:from-purple-500 hover:to-fuchsia-500 disabled:cursor-not-allowed disabled:opacity-40"
+                  className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-gossip-deep text-white transition-all hover:bg-gossip disabled:cursor-not-allowed disabled:opacity-40"
                 >
                   <Send className="h-4 w-4" />
                 </button>
@@ -667,26 +671,26 @@ export function Dashboard({
           </>
         ) : (
           <div className="flex flex-1 flex-col items-center justify-center p-6 text-center">
-            <div className="mb-4 flex h-20 w-20 items-center justify-center rounded-3xl bg-gradient-to-br from-purple-600 to-fuchsia-600 shadow-xl shadow-purple-900/40">
-              <MessageSquare className="h-10 w-10 text-white" />
+            <div className="mb-4 flex h-20 w-20 items-center justify-center rounded-3xl bg-surface-raised shadow-lg shadow-black/30">
+              <MessageSquare className="h-10 w-10 text-gossip" />
             </div>
-            <h2 className="text-xl font-semibold text-zinc-200">
+            <h2 className="text-xl font-semibold text-ink-text">
               Welcome to Chismisa!
             </h2>
-            <p className="mt-2 max-w-sm text-sm text-zinc-500">
+            <p className="mt-2 max-w-sm text-sm text-ink-muted">
               Create a group to start chatting, or join an existing one with an
               invite code.
             </p>
             <div className="mt-6 flex flex-col gap-3 sm:flex-row">
               <button
                 onClick={() => setShowCreateModal(true)}
-                className="rounded-xl bg-gradient-to-r from-purple-600 to-fuchsia-600 px-5 py-2.5 text-sm font-semibold text-white transition-colors hover:from-purple-500 hover:to-fuchsia-500"
+                className="rounded-xl bg-gossip-deep px-5 py-2.5 text-sm font-semibold text-white transition-colors hover:bg-gossip"
               >
                 Create Group
               </button>
               <button
                 onClick={() => setShowJoinModal(true)}
-                className="rounded-xl border border-zinc-700 px-5 py-2.5 text-sm font-semibold text-zinc-300 transition-colors hover:bg-zinc-800"
+                className="rounded-xl border border-hairline px-5 py-2.5 text-sm font-semibold text-ink-text transition-colors hover:bg-surface-raised"
               >
                 Join Group
               </button>
@@ -707,7 +711,7 @@ export function Dashboard({
             <div>
               <label
                 htmlFor="group-name"
-                className="mb-1.5 block text-sm font-medium text-zinc-300"
+                className="mb-1.5 block text-sm font-medium text-ink-text"
               >
                 Group Name
               </label>
@@ -718,13 +722,13 @@ export function Dashboard({
                 required
                 maxLength={50}
                 placeholder="e.g. Tambayan ng mga Chismosa"
-                className="w-full rounded-xl border border-zinc-700/60 bg-zinc-900/60 px-4 py-2.5 text-sm text-zinc-100 placeholder-zinc-500 outline-none transition-colors focus:border-purple-500 focus:ring-2 focus:ring-purple-500/20"
+                className="w-full rounded-xl border border-hairline bg-surface-raised px-4 py-2.5 text-sm text-ink-text placeholder:text-ink-muted outline-none transition-colors focus:border-gossip focus:ring-2 focus:ring-gossip/20"
               />
             </div>
             <button
               type="submit"
               disabled={createPending}
-              className="w-full rounded-xl bg-gradient-to-r from-purple-600 to-fuchsia-600 py-2.5 text-sm font-semibold text-white transition-colors hover:from-purple-500 hover:to-fuchsia-500 disabled:opacity-60"
+              className="w-full rounded-xl bg-gossip-deep py-2.5 text-sm font-semibold text-white transition-colors hover:bg-gossip disabled:opacity-60"
             >
               {createPending ? "Creating…" : "Create Group"}
             </button>
@@ -744,7 +748,7 @@ export function Dashboard({
             <div>
               <label
                 htmlFor="invite-code"
-                className="mb-1.5 block text-sm font-medium text-zinc-300"
+                className="mb-1.5 block text-sm font-medium text-ink-text"
               >
                 Invite Code
               </label>
@@ -754,13 +758,13 @@ export function Dashboard({
                 type="text"
                 required
                 placeholder="CHISMIS-XXXXXX"
-                className="w-full rounded-xl border border-zinc-700/60 bg-zinc-900/60 px-4 py-2.5 text-sm uppercase tracking-wider text-zinc-100 placeholder-zinc-500 outline-none transition-colors focus:border-purple-500 focus:ring-2 focus:ring-purple-500/20"
+                className="w-full rounded-xl border border-hairline bg-surface-raised px-4 py-2.5 text-sm uppercase tracking-wider text-ink-text placeholder:text-ink-muted outline-none transition-colors focus:border-gossip focus:ring-2 focus:ring-gossip/20"
               />
             </div>
             <button
               type="submit"
               disabled={joinPending}
-              className="w-full rounded-xl bg-gradient-to-r from-purple-600 to-fuchsia-600 py-2.5 text-sm font-semibold text-white transition-colors hover:from-purple-500 hover:to-fuchsia-500 disabled:opacity-60"
+              className="w-full rounded-xl bg-gossip-deep py-2.5 text-sm font-semibold text-white transition-colors hover:bg-gossip disabled:opacity-60"
             >
               {joinPending ? "Joining…" : "Join Group"}
             </button>
@@ -788,7 +792,7 @@ export function Dashboard({
           title="New Direct Message"
         >
           <div className="space-y-4">
-            <p className="text-sm text-zinc-400">
+            <p className="text-sm text-ink-muted">
               Enter a username to start a private conversation.
             </p>
             {newDmError && (
@@ -809,12 +813,12 @@ export function Dashboard({
               placeholder="Username…"
               maxLength={20}
               autoFocus
-              className="w-full rounded-xl border border-zinc-700/60 bg-zinc-900/60 px-4 py-2.5 text-sm text-zinc-100 placeholder-zinc-500 outline-none transition-colors focus:border-purple-500 focus:ring-2 focus:ring-purple-500/20"
+              className="w-full rounded-xl border border-hairline bg-surface-raised px-4 py-2.5 text-sm text-ink-text placeholder:text-ink-muted outline-none transition-colors focus:border-gossip focus:ring-2 focus:ring-gossip/20"
             />
             <button
               onClick={() => void handleStartDm()}
               disabled={newDmPending || newDmUsername.trim().length < 3}
-              className="w-full rounded-xl bg-gradient-to-r from-purple-600 to-fuchsia-600 py-2.5 text-sm font-semibold text-white transition-colors hover:from-purple-500 hover:to-fuchsia-500 disabled:opacity-60"
+              className="w-full rounded-xl bg-gossip-deep py-2.5 text-sm font-semibold text-white transition-colors hover:bg-gossip disabled:opacity-60"
             >
               {newDmPending ? "Looking up…" : "Start Conversation"}
             </button>
@@ -826,20 +830,20 @@ export function Dashboard({
       {showInviteModal && selectedGroup?.isOwner && (
         <Modal onClose={() => setShowInviteModal(false)} title="Invite Code">
           <div className="space-y-4">
-            <p className="text-sm text-zinc-400">
+            <p className="text-sm text-ink-muted">
               Share this code with friends to let them join{" "}
-              <span className="font-semibold text-zinc-200">
+              <span className="font-semibold text-ink-text">
                 {selectedGroup.name}
               </span>
               :
             </p>
-            <div className="flex items-center gap-2 rounded-xl border border-purple-600/40 bg-purple-600/10 p-4">
-              <code className="flex-1 text-center font-mono text-lg font-bold tracking-widest text-purple-300">
+            <div className="flex items-center gap-2 rounded-xl border border-gossip/40 bg-gossip/10 p-4">
+              <code className="flex-1 text-center font-mono text-lg font-bold tracking-widest text-gossip">
                 {selectedGroup.code}
               </code>
               <button
                 onClick={copyInviteCode}
-                className="rounded-lg bg-purple-600/20 p-2 text-purple-300 transition-colors hover:bg-purple-600/30"
+                className="rounded-lg bg-gossip/20 p-2 text-gossip transition-colors hover:bg-gossip/30"
                 title="Copy code"
               >
                 {copied ? (
@@ -851,7 +855,7 @@ export function Dashboard({
             </div>
             <button
               onClick={copyInviteLink}
-              className="w-full rounded-xl border border-zinc-700 py-2.5 text-sm font-semibold text-zinc-300 transition-colors hover:bg-zinc-800"
+              className="w-full rounded-xl border border-hairline py-2.5 text-sm font-semibold text-ink-text transition-colors hover:bg-surface-raised"
             >
               Copy Invite Link
             </button>
@@ -871,11 +875,11 @@ export function Dashboard({
           title={confirmModal.type === "leave" ? "Leave Group" : "Delete Group"}
         >
           <div className="space-y-4">
-            <p className="text-sm text-zinc-400">
+            <p className="text-sm text-ink-muted">
               {confirmModal.type === "leave" ? (
                 <>
                   Are you sure you want to leave{" "}
-                  <span className="font-semibold text-zinc-200">
+                  <span className="font-semibold text-ink-text">
                     {confirmModal.name}
                   </span>
                   ? You can rejoin later with the invite code.
@@ -883,7 +887,7 @@ export function Dashboard({
               ) : (
                 <>
                   Are you sure you want to delete{" "}
-                  <span className="font-semibold text-zinc-200">
+                  <span className="font-semibold text-ink-text">
                     {confirmModal.name}
                   </span>
                   ? This will permanently remove the group and all its messages.
@@ -894,7 +898,7 @@ export function Dashboard({
               <button
                 onClick={() => setConfirmModal(null)}
                 disabled={confirmPending}
-                className="flex-1 rounded-xl border border-zinc-700 py-2.5 text-sm font-semibold text-zinc-300 transition-colors hover:bg-zinc-800 disabled:opacity-60"
+                className="flex-1 rounded-xl border border-hairline py-2.5 text-sm font-semibold text-ink-text transition-colors hover:bg-surface-raised disabled:opacity-60"
               >
                 Cancel
               </button>
@@ -903,7 +907,7 @@ export function Dashboard({
                 disabled={confirmPending}
                 className={`flex-1 rounded-xl py-2.5 text-sm font-semibold text-white transition-colors disabled:opacity-60 ${
                   confirmModal.type === "leave"
-                    ? "bg-zinc-700 hover:bg-zinc-600"
+                    ? "bg-surface-raised text-ink-text hover:bg-gossip/20"
                     : "bg-red-600 hover:bg-red-500"
                 }`}
               >

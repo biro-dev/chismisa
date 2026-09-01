@@ -62,10 +62,10 @@ export function DmView({
   return (
     <div className="flex h-full flex-col">
       {/* DM header */}
-      <div className="flex items-center gap-3 border-b border-zinc-800/60 px-4 py-3">
+      <div className="flex items-center gap-3 border-b border-hairline px-4 py-3">
         <button
           onClick={onBack}
-          className="rounded-lg p-1.5 text-zinc-400 transition-colors hover:bg-zinc-800 hover:text-zinc-200 md:hidden"
+          className="rounded-lg p-1.5 text-ink-muted transition-colors hover:bg-surface-raised hover:text-ink-text md:hidden"
           title="Back to groups"
         >
           <ArrowLeft className="h-4 w-4" />
@@ -80,10 +80,10 @@ export function DmView({
           </span>
         </div>
         <div>
-          <h2 className="text-sm font-semibold text-zinc-100">
+          <h2 className="text-sm font-semibold text-ink-text">
             {conversation.otherUser.username}
           </h2>
-          <p className="text-xs text-zinc-500">Direct message</p>
+          <p className="text-xs text-ink-muted">Direct message</p>
         </div>
       </div>
 
@@ -94,7 +94,7 @@ export function DmView({
       >
         {loading ? (
           <div className="flex h-full items-center justify-center">
-            <p className="text-sm text-zinc-500">Loading messages…</p>
+            <p className="text-sm text-ink-muted">Loading messages…</p>
           </div>
         ) : messages.length === 0 ? (
           <div className="flex h-full flex-col items-center justify-center text-center">
@@ -107,10 +107,10 @@ export function DmView({
                 {conversation.otherUser.username.charAt(0).toUpperCase()}
               </span>
             </div>
-            <p className="text-sm font-semibold text-zinc-300">
+            <p className="text-sm font-semibold text-ink-text">
               {conversation.otherUser.username}
             </p>
-            <p className="mt-1 text-xs text-zinc-500">
+            <p className="mt-1 text-xs text-ink-muted">
               Say hi — this is the start of your conversation.
             </p>
           </div>
@@ -143,16 +143,16 @@ export function DmView({
 
       {/* Reply preview */}
       {replyTo && (
-        <div className="flex items-center justify-between gap-2 border-t border-zinc-800/60 bg-zinc-900/40 px-4 py-2">
+        <div className="flex items-center justify-between gap-2 border-t border-hairline bg-surface/70 px-4 py-2">
           <div className="min-w-0 text-xs">
-            <p className="font-medium text-purple-400">
+            <p className="font-medium text-gossip">
               Replying to {replyTo.username}
             </p>
-            <p className="truncate text-zinc-500">{replyTo.content}</p>
+            <p className="truncate text-ink-muted">{replyTo.content}</p>
           </div>
           <button
             onClick={() => setReplyTo(null)}
-            className="rounded-lg p-1 text-zinc-500 hover:text-zinc-300"
+            className="rounded-lg p-1 text-ink-muted hover:text-ink-text"
           >
             <X className="h-3.5 w-3.5" />
           </button>
@@ -173,7 +173,7 @@ export function DmView({
       )}
 
       {/* Input */}
-      <div className="safe-bottom flex items-end gap-2 border-t border-zinc-800/60 p-3">
+      <div className="safe-bottom flex items-end gap-2 border-t border-hairline p-3">
         <textarea
           ref={inputRef}
           value={messageInput}
@@ -187,12 +187,12 @@ export function DmView({
           placeholder={`Message ${conversation.otherUser.username}…`}
           maxLength={2000}
           rows={1}
-          className="max-h-[120px] flex-1 resize-none rounded-xl border border-zinc-700/60 bg-zinc-900/60 px-4 py-2.5 text-sm text-zinc-100 placeholder-zinc-500 outline-none transition-colors focus:border-purple-500 focus:ring-2 focus:ring-purple-500/20"
+          className="max-h-[120px] flex-1 resize-none rounded-xl border border-hairline bg-surface-raised px-4 py-2.5 text-sm text-ink-text placeholder:text-ink-muted outline-none transition-colors focus:border-gossip focus:ring-2 focus:ring-gossip/20"
         />
         <button
           onClick={() => void handleSendMessage()}
           disabled={!messageInput.trim()}
-          className="rounded-xl bg-gradient-to-r from-purple-600 to-fuchsia-600 p-2.5 text-white transition-colors hover:from-purple-500 hover:to-fuchsia-500 disabled:opacity-40"
+          className="rounded-xl bg-gossip-deep p-2.5 text-white transition-colors hover:bg-gossip disabled:opacity-40"
           title="Send message"
         >
           <Send className="h-4 w-4" />

@@ -37,12 +37,12 @@ export function LoginForm() {
       <div>
         <label
           htmlFor="username"
-          className="mb-1.5 block text-sm font-medium text-zinc-300"
+          className="mb-1.5 block text-sm font-medium text-ink-text"
         >
           Username
         </label>
         <div className="relative">
-          <User className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-zinc-500" />
+          <User className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-ink-muted" />
           <input
             id="username"
             name="username"
@@ -51,7 +51,7 @@ export function LoginForm() {
             minLength={3}
             maxLength={20}
             placeholder="e.g. siomai_girl2000"
-            className="w-full rounded-xl border border-zinc-700/60 bg-zinc-900/60 py-3 pl-10 pr-4 text-sm text-zinc-100 placeholder-zinc-500 outline-none transition-colors focus:border-purple-500 focus:ring-2 focus:ring-purple-500/20 sm:py-2.5"
+            className="w-full rounded-xl border border-hairline bg-surface-raised py-3 pl-10 pr-4 text-sm text-ink-text placeholder:text-ink-muted outline-none transition-colors focus:border-gossip focus:ring-2 focus:ring-gossip/20 sm:py-2.5"
           />
         </div>
       </div>
@@ -59,12 +59,12 @@ export function LoginForm() {
       <div>
         <label
           htmlFor="password"
-          className="mb-1.5 block text-sm font-medium text-zinc-300"
+          className="mb-1.5 block text-sm font-medium text-ink-text"
         >
           Password
         </label>
         <div className="relative">
-          <Lock className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-zinc-500" />
+          <Lock className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-ink-muted" />
           <input
             id="password"
             name="password"
@@ -72,7 +72,7 @@ export function LoginForm() {
             required
             minLength={4}
             placeholder="••••••••"
-            className="w-full rounded-xl border border-zinc-700/60 bg-zinc-900/60 py-3 pl-10 pr-12 text-sm text-zinc-100 placeholder-zinc-500 outline-none transition-colors focus:border-purple-500 focus:ring-2 focus:ring-purple-500/20 sm:py-2.5"
+            className="w-full rounded-xl border border-hairline bg-surface-raised py-3 pl-10 pr-12 text-sm text-ink-text placeholder:text-ink-muted outline-none transition-colors focus:border-gossip focus:ring-2 focus:ring-gossip/20 sm:py-2.5"
           />
           <button
             type="button"
@@ -81,7 +81,7 @@ export function LoginForm() {
             aria-pressed={showPassword}
             tabIndex={-1}
             title={showPassword ? "Hide password" : "Show password"}
-            className="absolute right-3 top-1/2 -translate-y-1/2 rounded-lg p-1.5 text-zinc-500 transition-colors hover:text-zinc-300 focus-visible:outline-none"
+            className="absolute right-3 top-1/2 -translate-y-1/2 rounded-lg p-1.5 text-ink-muted transition-colors hover:text-ink-text focus-visible:outline-none"
           >
             {showPassword ? (
               <EyeOff className="h-4 w-4" />
@@ -95,7 +95,7 @@ export function LoginForm() {
       <button
         type="submit"
         disabled={pending}
-        className="w-full rounded-xl bg-gradient-to-r from-purple-600 to-fuchsia-600 py-3.5 text-sm font-semibold text-white shadow-lg shadow-purple-900/40 transition-all hover:from-purple-500 hover:to-fuchsia-500 disabled:cursor-not-allowed disabled:opacity-60 sm:py-3"
+        className="w-full rounded-xl bg-gossip-deep py-3.5 text-sm font-semibold text-white shadow-lg shadow-gossip-deep/30 transition-all hover:bg-gossip disabled:cursor-not-allowed disabled:opacity-60 sm:py-3"
       >
         {pending ? "Entering..." : "Log in / Sign up"}
       </button>

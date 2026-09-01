@@ -1,32 +1,54 @@
 @import "tailwindcss";
 
+/* ─── Chismisa design tokens — "after-hours" ───────────────────────────────
+   Dark is the signature mode; light mode lives in the same hue family.
+   Components read these via Tailwind utilities (bg-ink, bg-surface,
+   text-ink-muted, bg-gossip, ...) instead of hardcoded hex values. */
 :root {
-  --background: #0a0612;
-  --foreground: #f4f1fa;
+  --ink: #0f0a1a;
+  --surface: #1c1430;
+  --surface-raised: #271c42;
+  --gossip: #e63e86;
+  /* AA (4.7:1) with white text — used for own bubbles & primary buttons */
+  --gossip-deep: #d1337a;
+  --tea: #f6b93b;
+  --ink-text: #f3ecff;
+  --ink-muted: #9686b5;
+  --hairline: rgba(150, 134, 181, 0.16);
+
+  --background: var(--ink);
+  --foreground: var(--ink-text);
+}
+
+[data-theme="light"] {
+  --ink: #fbf6ff;
+  --surface: #f0e6fb;
+  --surface-raised: #ffffff;
+  --ink-text: #241934;
+  --ink-muted: #6b5e85;
+  --hairline: rgba(36, 25, 52, 0.12);
 }
 
 @theme inline {
   --color-background: var(--background);
   --color-foreground: var(--foreground);
-  --font-sans: var(--font-geist-sans);
-  --font-mono: var(--font-geist-mono);
+  --color-ink: var(--ink);
+  --color-surface: var(--surface);
+  --color-surface-raised: var(--surface-raised);
+  --color-gossip: var(--gossip);
+  --color-gossip-deep: var(--gossip-deep);
+  --color-tea: var(--tea);
+  --color-ink-text: var(--ink-text);
+  --color-ink-muted: var(--ink-muted);
+  --color-hairline: var(--hairline);
+  --font-sans: var(--font-jakarta);
+  --font-display: var(--font-fraunces);
 }
 
 body {
   background: var(--background);
   color: var(--foreground);
-  font-family: var(--font-sans), Arial, Helvetica, sans-serif;
-}
-
-/* Light theme overrides — applied via [data-theme="light"] on <html> */
-[data-theme="light"] {
-  --background: #f4f1fa;
-  --foreground: #1a1425;
-}
-
-[data-theme="light"] body {
-  background: #f4f1fa;
-  color: #1a1425;
+  font-family: var(--font-jakarta), Arial, Helvetica, sans-serif;
 }
 
 [data-theme="light"] .bg-\[\#0a0612\] {
@@ -239,7 +261,7 @@ body {
 /* Highlight flash for a message jumped to via search results */
 @keyframes messageHighlight {
   0%, 60% {
-    background-color: rgba(168, 85, 247, 0.25);
+    background-color: rgba(230, 62, 134, 0.22);
     border-radius: 12px;
   }
   100% {
@@ -266,4 +288,44 @@ body {
 
 .safe-right {
   padding-right: env(safe-area-inset-right);
+}
+
+/* One deliberate motion moment: a message arriving/sending gently rises in */
+@keyframes bubbleIn {
+  from {
+    opacity: 0;
+    transform: translateY(3px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.animate-bubble-in {
+  animation: bubbleIn 0.16s ease-out;
+}
+
+/* Typing indicator: a soft tea-gold breathing glow — "about to spill" */
+@keyframes teaPulse {
+  0%,
+  100% {
+    opacity: 0.45;
+    transform: scale(0.85);
+  }
+  50% {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+
+.tea-pulse {
+  animation: teaPulse 1.2s ease-in-out infinite;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .animate-bubble-in,
+  .tea-pulse {
+    animation: none;
+  }
 }

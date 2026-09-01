@@ -32,14 +32,14 @@ export function AdminLogin() {
   };
 
   return (
-    <div className="flex min-h-screen items-center justify-center bg-[#0a0612] p-4">
-      <div className="w-full max-w-sm space-y-6 rounded-2xl border border-zinc-800 bg-[#120a1f] p-8 shadow-2xl">
+    <div className="flex min-h-screen items-center justify-center bg-ink p-4">
+      <div className="w-full max-w-sm space-y-6 rounded-2xl border border-hairline bg-surface-raised p-8 shadow-2xl">
         <div className="flex flex-col items-center gap-3">
-          <div className="flex h-14 w-14 items-center justify-center rounded-full bg-gradient-to-br from-purple-600 to-fuchsia-600">
+          <div className="flex h-14 w-14 items-center justify-center rounded-full bg-gossip-deep">
             <KeyRound className="h-7 w-7 text-white" />
           </div>
-          <h1 className="text-xl font-bold text-zinc-100">Admin Access</h1>
-          <p className="text-center text-sm text-zinc-400">
+          <h1 className="text-xl font-bold text-ink-text">Admin Access</h1>
+          <p className="text-center text-sm text-ink-muted">
             Enter the admin secret key to access the panel.
           </p>
         </div>
@@ -52,7 +52,7 @@ export function AdminLogin() {
               onChange={(e) => setSecret(e.target.value)}
               placeholder="Admin secret key"
               autoFocus
-              className="w-full rounded-xl border border-zinc-700 bg-zinc-900/60 px-4 py-3 text-sm text-zinc-100 placeholder-zinc-500 outline-none transition-colors focus:border-purple-500 focus:ring-2 focus:ring-purple-500/20"
+              className="w-full rounded-xl border border-hairline bg-surface-raised px-4 py-3 text-sm text-ink-text placeholder:text-ink-muted outline-none transition-colors focus:border-gossip focus:ring-2 focus:ring-gossip/20"
             />
           </div>
 
@@ -66,7 +66,7 @@ export function AdminLogin() {
           <button
             type="submit"
             disabled={loading || !secret.trim()}
-            className="flex w-full items-center justify-center gap-2 rounded-xl bg-gradient-to-r from-purple-600 to-fuchsia-600 py-3 text-sm font-semibold text-white transition-colors hover:from-purple-500 hover:to-fuchsia-500 disabled:opacity-60"
+            className="flex w-full items-center justify-center gap-2 rounded-xl bg-gossip-deep py-3 text-sm font-semibold text-white transition-colors hover:bg-gossip disabled:opacity-60"
           >
             {loading ? (
               "Verifying…"
