@@ -426,7 +426,7 @@ export function Dashboard({
       />
 
       {/* Right Panel - Chat */}
-      <main className="relative flex flex-1 flex-col bg-ink">
+      <main className="relative flex min-h-0 flex-1 flex-col bg-ink">
         {/* Mobile top bar with hamburger menu */}
         <div className="safe-top flex items-center gap-3 border-b border-hairline px-3 py-2 md:hidden">
           <button

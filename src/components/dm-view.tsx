@@ -60,7 +60,7 @@ export function DmView({
   if (!conversation) return null;
 
   return (
-    <div className="flex h-full flex-col">
+    <div className="flex min-h-0 flex-1 flex-col">
       {/* DM header */}
       <div className="flex items-center gap-3 border-b border-hairline px-4 py-3">
         <button
