@@ -796,7 +796,7 @@ export function AdminPanel() {
       </aside>
 
       {/* Main panel - Chat view of selected group */}
-      <main className="relative flex flex-1 flex-col bg-ink">
+      <main className="relative flex flex-1 min-h-0 min-w-0 flex-col bg-ink">
         {/* Mobile top bar */}
         <div className="safe-top flex items-center gap-3 border-b border-hairline px-3 py-2 md:hidden">
           <button
