@@ -318,12 +318,12 @@ html.native-app textarea {
    pushes the composer off-screen. The Capacitor WebView has no browser
    chrome, so 100vh is solid there; modern WebViews get the finer dvh. */
 .app-h {
-  height: 100vh;
+  height: var(--app-h, 100vh);
 }
 
 @supports (height: 100dvh) {
   .app-h {
-    height: 100dvh;
+    height: var(--app-h, 100dvh);
   }
 }
 

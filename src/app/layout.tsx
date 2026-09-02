@@ -38,6 +38,10 @@ export const viewport: Viewport = {
   width: "device-width",
   initialScale: 1,
   viewportFit: "cover",
+  // Shrink the layout viewport when the Android/iOS keyboard opens. Without
+  // this, WebView 108+ overlays the keyboard on top of the page, hiding the
+  // composer behind it (app-only bug).
+  interactiveWidget: "resizes-content",
   themeColor: "#0f0a1a",
 };
 

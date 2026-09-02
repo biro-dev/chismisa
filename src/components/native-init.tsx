@@ -16,6 +16,27 @@ export function NativeInit() {
       // it breaks the long-press reaction gesture).
       document.documentElement.classList.add("native-app");
 
+      // Keyboard-aware height for older WebViews: interactiveWidget =
+      // resizes-content (viewport meta) covers WebView 108+, but older
+      // versions keep the layout viewport at full height when the keyboard
+      // opens, hiding the composer. Track the visual viewport and expose the
+      // visible height as --app-h so the app shell can shrink to it.
+      const visualViewport = window.visualViewport;
+      if (visualViewport) {
+        const root = document.documentElement;
+        const updateAppHeight = () => {
+          const keyboardOpen = window.innerHeight - visualViewport.height > 150;
+          if (keyboardOpen) {
+            root.style.setProperty("--app-h", `${visualViewport.height}px`);
+          } else {
+            root.style.removeProperty("--app-h");
+          }
+        };
+        visualViewport.addEventListener("resize", updateAppHeight);
+        visualViewport.addEventListener("scroll", updateAppHeight);
+        updateAppHeight();
+      }
+
       // Status bar: prevent overlap on notched phones
       StatusBar.setOverlaysWebView({ overlay: false });
       StatusBar.setStyle({ style: Style.Light });
