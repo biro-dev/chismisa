@@ -4,6 +4,7 @@ import {
   useActionState,
   useCallback,
   useEffect,
+  useMemo,
   useSyncExternalStore,
   useState,
 } from "react";
@@ -22,17 +23,16 @@ import {
   Trash2,
   X,
 } from "lucide-react";
-import { GroupSidebar } from "@/components/group-sidebar";
 import { MessageBubble } from "@/components/message-bubble";
 import { TimeDivider, chatDividerLabel } from "@/components/time-divider";
 import { Modal } from "@/components/modal";
 import { SearchModal } from "@/components/search-modal";
 import { DmView } from "@/components/dm-view";
 import { MediaPicker } from "@/components/media-picker";
+import { UnifiedSidebar } from "@/components/unified-sidebar";
 import { useDm } from "@/lib/hooks/use-dm";
 import {
   findUserByUsername,
-  getConversations,
   startConversationAction,
 } from "@/lib/actions/direct-messages";
 import {
@@ -47,11 +47,12 @@ import {
   subscribeToTheme,
   toggleThemeInStore,
 } from "@/lib/theme";
-import type { Conversation, DashboardProps, Group } from "@/lib/types";
+import type { Conversation, DashboardProps, Group, SidebarConversation } from "@/lib/types";
 import { groupColor } from "@/lib/group-color";
 import {
   createGroupAction,
   deleteGroupAction,
+  getUnifiedConversations,
   joinGroupAction,
   leaveGroupAction,
 } from "@/lib/actions/groups";
@@ -115,6 +116,8 @@ export function Dashboard({
 
   // ─── Direct messages ──────────────────────────────────────────────────────
   const [dms, setDms] = useState<Conversation[]>([]);
+  const [conversations, setConversations] = useState<SidebarConversation[]>([]);
+  const [searchQuery, setSearchQuery] = useState("");
   const [activeDmId, setActiveDmId] = useState<string | null>(null);
   const [showNewDmModal, setShowNewDmModal] = useState(false);
   const [newDmUsername, setNewDmUsername] = useState("");
@@ -122,9 +125,32 @@ export function Dashboard({
   const [newDmPending, setNewDmPending] = useState(false);
   const activeDm = dms.find((d) => d.id === activeDmId) ?? null;
 
+  // Filter conversations by search query
+  const filteredConversations = useMemo(() => {
+    if (!searchQuery.trim()) return conversations;
+    const q = searchQuery.toLowerCase();
+    return conversations.filter(
+      (c) =>
+        c.name.toLowerCase().includes(q) ||
+        (c.lastMessage && c.lastMessage.toLowerCase().includes(q))
+    );
+  }, [conversations, searchQuery]);
+
   // Refresh the sidebar conversation list (previews + unread badges)
   const refreshConversations = useCallback(() => {
-    void getConversations().then((list) => setDms(list));
+    void getUnifiedConversations().then((list) => {
+      setConversations(list);
+      // Also update the old dms state for backward compatibility
+      const dmList: Conversation[] = list
+        .filter((c) => c.kind === "dm")
+        .map((c) => ({
+          id: c.id,
+          otherUser: { id: "", username: c.name },
+          lastMessage: c.lastMessage ? { content: c.lastMessage, createdAt: c.lastActivity, senderId: "" } : null,
+          unreadCount: c.unreadCount,
+        }));
+      setDms(dmList);
+    });
   }, []);
 
   // Load conversations on mount and poll every 30s for previews/badges
@@ -134,6 +160,28 @@ export function Dashboard({
     return () => clearInterval(interval);
   }, [refreshConversations]);
 
+  // Presence heartbeat — updates lastActiveAt so the analytics panel can
+  // show "Online Now" (active in the last minute). Pings on mount, every 30s
+  // while the tab is visible, and when the tab returns to the foreground.
+  useEffect(() => {
+    const ping = () => {
+      if (document.hidden) return;
+      fetch("/api/presence/ping", { method: "POST", credentials: "include" }).catch(
+        () => {}
+      );
+    };
+    ping();
+    const interval = setInterval(ping, 30_000);
+    const onVisible = () => {
+      if (!document.hidden) ping();
+    };
+    document.addEventListener("visibilitychange", onVisible);
+    return () => {
+      clearInterval(interval);
+      document.removeEventListener("visibilitychange", onVisible);
+    };
+  }, []);
+
   // All DM messaging state (messages, polling, realtime, optimistic send,
   // edit/delete/react) lives in useDm — mirrors how groups use useChat.
   const dm = useDm({
@@ -141,10 +189,6 @@ export function Dashboard({
     userId,
     onConversationActivity: refreshConversations,
   });
-
-  const handleSelectDm = (conversationId: string) => {
-    setActiveDmId(conversationId);
-  };
 
   // Start (or open) a conversation with the given username
   const handleStartDm = async () => {
@@ -181,6 +225,21 @@ export function Dashboard({
   const [showJoinModal, setShowJoinModal] = useState(false);
   const [showInviteModal, setShowInviteModal] = useState(false);
   const [showSearchModal, setShowSearchModal] = useState(false);
+
+  // Unified selection handler for both DMs and groups
+  const handleSelectConversation = (id: string, kind: "dm" | "group") => {
+    if (kind === "dm") {
+      setActiveDmId(id);
+    } else {
+      setActiveDmId(null);
+      // Clear unread badge immediately (before server poll)
+      setGroupsState((prev) =>
+        prev.map((g) => (g.id === id ? { ...g, unreadCount: 0 } : g))
+      );
+      selectGroup(id);
+    }
+    setSidebarOpen(false);
+  };
   // Confirmation modal for leaving/deleting a group
   const [confirmModal, setConfirmModal] = useState<{
     type: "leave" | "delete";
@@ -287,20 +346,6 @@ export function Dashboard({
     window.addEventListener("beforeunload", onUnload);
     return () => window.removeEventListener("beforeunload", onUnload);
   }, []);
-
-  // Selecting a group from the sidebar also closes the mobile drawer and
-  // clears that group's unread badge immediately (before the server poll).
-  const handleSelectGroup = useCallback(
-    (groupId: string) => {
-      setActiveDmId(null); // switch away from any open DM
-      setSidebarOpen(false);
-      setGroupsState((prev) =>
-        prev.map((g) => (g.id === groupId ? { ...g, unreadCount: 0 } : g))
-      );
-      selectGroup(groupId);
-    },
-    [selectGroup]
-  );
 
   // Handle create group success
   useEffect(() => {
@@ -413,20 +458,20 @@ export function Dashboard({
       )}
 
       {/* Left Sidebar - responsive: hidden on mobile, show as overlay; visible on md+ */}
-      <GroupSidebar
+      <UnifiedSidebar
         username={username}
         theme={theme}
-        groups={groupsState}
-        selectedGroupId={selectedGroupId}
-        dms={dms}
-        selectedDmId={activeDmId}
-        onSelectDm={handleSelectDm}
+        conversations={filteredConversations}
+        selectedId={activeDmId ?? selectedGroupId}
+        selectedKind={activeDmId ? "dm" : selectedGroupId ? "group" : null}
+        onSelectConversation={handleSelectConversation}
         onShowNewDm={() => setShowNewDmModal(true)}
         sidebarOpen={sidebarOpen}
         onToggleTheme={toggleTheme}
         onShowCreate={() => setShowCreateModal(true)}
         onShowJoin={() => setShowJoinModal(true)}
-        onSelectGroup={handleSelectGroup}
+        searchQuery={searchQuery}
+        onSearchChange={setSearchQuery}
         onCloseSidebar={() => setSidebarOpen(false)}
       />
 

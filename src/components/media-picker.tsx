@@ -2,7 +2,7 @@
 
 import { useCallback, useRef, useState } from "react";
 import { Camera, Mic, Video, X } from "lucide-react";
-import { uploadMedia, formatDuration, formatFileSize } from "@/lib/firebase-client";
+import { uploadMedia, formatDuration, formatFileSize, compressImage, getSupportedMimeType, getExtensionForMimeType } from "@/lib/firebase-client";
 
 export type MediaAttachment = {
   mediaUrl: string;
@@ -39,16 +39,30 @@ export function MediaPicker({ userId, onPendingMediaChange }: MediaPickerProps) 
 
   const handleFileSelect = useCallback(
     async (e: React.ChangeEvent<HTMLInputElement>, type: "image" | "video") => {
-      const file = e.target.files?.[0];
+      let file = e.target.files?.[0];
       if (!file) return;
       e.target.value = "";
+
       if (file.size > 50 * 1024 * 1024) {
         setError("File too large. Maximum size is 50MB.");
         return;
       }
+
       setError(null);
       setUploading(true);
       setUploadProgress(0);
+
+      // Compress images before upload (skip for videos)
+      if (type === "image") {
+        try {
+          const originalSize = file.size;
+          file = await compressImage(file, 1200, 0.75);
+          console.log("Image compressed: " + formatFileSize(originalSize) + " -> " + formatFileSize(file.size));
+        } catch (err) {
+          console.warn("Image compression failed, using original:", err);
+        }
+      }
+
       const previewUrl = URL.createObjectURL(file);
       setPreview({ type, url: previewUrl, name: file.name, size: file.size });
       try {
@@ -66,15 +80,18 @@ export function MediaPicker({ userId, onPendingMediaChange }: MediaPickerProps) 
   );
   const startRecording = useCallback(async () => {
     try {
+      const mimeType = getSupportedMimeType();
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-      const mediaRecorder = new MediaRecorder(stream);
+      const options = mimeType ? { mimeType } : undefined;
+      const mediaRecorder = new MediaRecorder(stream, options);
       mediaRecorderRef.current = mediaRecorder;
       chunksRef.current = [];
       mediaRecorder.ondataavailable = (e) => { if (e.data.size > 0) chunksRef.current.push(e.data); };
       mediaRecorder.onstop = async () => {
         stream.getTracks().forEach((t) => t.stop());
-        const blob = new Blob(chunksRef.current, { type: "audio/webm" });
-        const file = new File([blob], `voice_${Date.now()}.webm`, { type: "audio/webm" });
+        const blob = new Blob(chunksRef.current, { type: mimeType || "audio/webm" });
+        const ext = getExtensionForMimeType(mimeType || "audio/webm");
+        const file = new File([blob], "voice_" + Date.now() + ext, { type: mimeType || "audio/webm" });
         setRecording(false);
         setRecordingTime(0);
         if (recordingIntervalRef.current) clearInterval(recordingIntervalRef.current);
@@ -100,8 +117,11 @@ export function MediaPicker({ userId, onPendingMediaChange }: MediaPickerProps) 
       recordingIntervalRef.current = setInterval(() => setRecordingTime((t) => t + 1), 1000);
       setError(null);
     } catch (err) {
-      console.error("Microphone access denied:", err);
-      setError("Microphone access denied. Please allow microphone access.");
+      console.error("Voice recording error:", err);
+      const msg = err instanceof Error && err.name === "NotAllowedError"
+        ? "Microphone access denied. Please allow microphone permission in your device settings."
+        : "Could not start voice recording. Please check your microphone.";
+      setError(msg);
     }
   }, [userId, onPendingMediaChange]);
 
@@ -116,7 +136,7 @@ export function MediaPicker({ userId, onPendingMediaChange }: MediaPickerProps) 
   }, [onPendingMediaChange]);
   return (
     <div className="flex items-center gap-1">
-      <input ref={imageInputRef} type="file" accept="image/*" capture="environment" className="hidden" onChange={(e) => handleFileSelect(e, "image")} />
+      <input ref={imageInputRef} type="file" accept="image/*" className="hidden" onChange={(e) => handleFileSelect(e, "image")} />
       <input ref={videoInputRef} type="file" accept="video/*" className="hidden" onChange={(e) => handleFileSelect(e, "video")} />
       <button type="button" onClick={() => imageInputRef.current?.click()} disabled={uploading || recording || !!preview} className="rounded-lg p-2 text-ink-muted transition-colors hover:bg-surface-raised hover:text-gossip disabled:opacity-40" title="Send image"><Camera className="h-4 w-4" /></button>
       <button type="button" onClick={() => videoInputRef.current?.click()} disabled={uploading || recording || !!preview} className="rounded-lg p-2 text-ink-muted transition-colors hover:bg-surface-raised hover:text-gossip disabled:opacity-40" title="Send video"><Video className="h-4 w-4" /></button>
@@ -153,3 +173,8 @@ export function MediaPicker({ userId, onPendingMediaChange }: MediaPickerProps) 
     </div>
   );
 }
+
+
+
+
+

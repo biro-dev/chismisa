@@ -247,3 +247,143 @@ export async function getGroupDetails(groupId: string) {
     })),
   };
 }
+
+// ─── Unified sidebar ──────────────────────────────────────────────────────
+
+import type { SidebarConversation } from "@/lib/types";
+
+/**
+ * Fetch all conversations (groups + DMs) for the unified sidebar.
+ * Normalizes both into SidebarConversation and sorts by last activity (newest first).
+ */
+export async function getUnifiedConversations(): Promise<SidebarConversation[]> {
+  const session = await getSession();
+  if (!session) return [];
+
+  try {
+    // Fetch groups with last message preview
+    const groups = await db.group.findMany({
+      where: { members: { some: { userId: session.userId } } },
+      select: {
+        id: true,
+        name: true,
+        ownerId: true,
+        createdAt: true,
+        members: { select: { userId: true } },
+        messages: {
+          orderBy: { createdAt: "desc" },
+          take: 1,
+          select: { content: true, createdAt: true },
+        },
+      },
+    });
+
+    // Fetch DMs with last message preview
+    const conversations = await db.conversation.findMany({
+      where: { members: { some: { userId: session.userId } } },
+      select: {
+        id: true,
+        createdAt: true,
+        members: {
+          where: { userId: { not: session.userId } },
+          select: { user: { select: { id: true, username: true } } },
+          take: 1,
+        },
+        messages: {
+          orderBy: { createdAt: "desc" },
+          take: 1,
+          select: { content: true, createdAt: true },
+        },
+      },
+    });
+
+    // Compute unread counts for groups — batch the memberships in one query,
+    // then run the message counts in parallel (no sequential N+1).
+    const groupMemberships = await db.groupMember.findMany({
+      where: { userId: session.userId },
+      select: { groupId: true, lastReadAt: true },
+    });
+    const lastReadByGroup = new Map(
+      groupMemberships.map((m) => [m.groupId, m.lastReadAt])
+    );
+    const groupUnreadCounts = new Map<string, number>();
+    await Promise.all(
+      groups.map(async (g) => {
+        const lastRead = lastReadByGroup.get(g.id);
+        const unread = await db.message.count({
+          where: {
+            groupId: g.id,
+            ...(lastRead ? { createdAt: { gt: lastRead } } : {}),
+          },
+        });
+        groupUnreadCounts.set(g.id, unread);
+      })
+    );
+
+    // Compute unread counts for DMs — same batching strategy
+    const dmMemberships = await db.conversationMember.findMany({
+      where: { userId: session.userId },
+      select: { conversationId: true, lastReadAt: true },
+    });
+    const dmLastReadByConv = new Map(
+      dmMemberships.map((m) => [m.conversationId, m.lastReadAt])
+    );
+    const dmUnreadCounts = new Map<string, number>();
+    await Promise.all(
+      conversations.map(async (c) => {
+        const lastRead = dmLastReadByConv.get(c.id);
+        const unread = await db.directMessage.count({
+          where: {
+            conversationId: c.id,
+            senderId: { not: session.userId },
+            ...(lastRead ? { createdAt: { gt: lastRead } } : {}),
+          },
+        });
+        dmUnreadCounts.set(c.id, unread);
+      })
+    );
+
+    // Normalize groups
+    const groupConvs: SidebarConversation[] = groups.map((g) => {
+      const lastMsg = g.messages[0];
+      return {
+        kind: "group" as const,
+        id: g.id,
+        name: g.name,
+        avatar: g.name.charAt(0).toUpperCase(),
+        lastMessage: lastMsg?.content ?? null,
+        lastActivity: lastMsg?.createdAt.toISOString() ?? g.createdAt.toISOString(),
+        unreadCount: groupUnreadCounts.get(g.id) ?? 0,
+        memberCount: g.members.length,
+        isOwner: g.ownerId === session.userId,
+      };
+    });
+
+    // Normalize DMs
+    const dmConvs: SidebarConversation[] = conversations
+      .filter((c) => c.members.length > 0)
+      .map((c) => {
+        const other = c.members[0].user;
+        const lastMsg = c.messages[0];
+        return {
+          kind: "dm" as const,
+          id: c.id,
+          name: other.username,
+          avatar: other.username.charAt(0).toUpperCase(),
+          lastMessage: lastMsg?.content ?? null,
+          lastActivity: lastMsg?.createdAt.toISOString() ?? c.createdAt.toISOString(),
+          unreadCount: dmUnreadCounts.get(c.id) ?? 0,
+        };
+      });
+
+    // Combine and sort by last activity (newest first)
+    const all = [...groupConvs, ...dmConvs];
+    all.sort((a, b) => new Date(b.lastActivity).getTime() - new Date(a.lastActivity).getTime());
+
+    return all;
+  } catch (err) {
+    console.error("Failed to fetch unified conversations:", err);
+    return [];
+  }
+}
+

@@ -73,3 +73,36 @@ export type Conversation = {
 
 /** Direct message — same shape as group Message so MessageBubble can render it. */
 export type DirectMessage = Message;
+
+// ─── Unified sidebar ──────────────────────────────────────────────────────
+
+/** A normalized row in the unified sidebar conversation list. */
+export type SidebarConversation =
+  | {
+      kind: "dm";
+      id: string;
+      name: string;
+      avatar: string; // other user's initial
+      lastMessage: string | null;
+      lastActivity: string; // ISO timestamp
+      unreadCount: number;
+      online?: boolean;
+    }
+  | {
+      kind: "group";
+      id: string;
+      name: string;
+      avatar: string; // group initial
+      lastMessage: string | null;
+      lastActivity: string;
+      unreadCount: number;
+      memberCount: number;
+      isOwner: boolean;
+    };
+
+/** A user presence entry for the "Active Now" row. */
+export type PresenceUser = {
+  userId: string;
+  username: string;
+  lastSeen: string; // ISO timestamp
+};

@@ -29,7 +29,6 @@ import {
   loginAdminAction,
   logoutAdminAction,
 } from "@/lib/actions/admin";
-import { AdminLogin } from "@/components/admin-login";
 
 type AdminStats = {
   userCount: number;
@@ -208,9 +207,6 @@ export function AdminPanel() {
   const [deleting, setDeleting] = useState<string | null>(null);
   const [sidebarOpen, setSidebarOpen] = useState(false);
 
-  // Inline login fallback (cookie valid but this tab has no stored secret)
-  const [showLogin, setShowLogin] = useState(false);
-
   // Sidebar tab: group monitoring vs direct-message monitoring
   const [viewMode, setViewMode] = useState<"groups" | "dms">("groups");
   const [dmList, setDmList] = useState<AdminDmConversation[] | null>(null);
@@ -248,31 +244,30 @@ export function AdminPanel() {
     secretRef.current = secret;
     if (!secret) {
       // The cookie may still be valid (e.g. the admin opened a new tab,
-      // where sessionStorage starts empty). Clear the cookie and show the
-      // login form inline — navigating to /chismis-admin would just render
-      // this panel again and spin forever.
+      // where sessionStorage starts empty). Clear the cookie and route back
+      // to the unified /admin login — no loop possible.
       sessionStorage.removeItem("admin_secret");
       logoutAdminAction()
         .catch(() => {})
-        .finally(() => setShowLogin(true));
+        .finally(() => router.replace("/admin"));
       return;
     }
     loginAdminAction(secret)
       .then((result) => {
         if (result.error) {
           sessionStorage.removeItem("admin_secret");
-          setShowLogin(true);
+          router.replace("/admin");
         } else {
           setIsReady(true);
         }
       })
-      .catch(() => setShowLogin(true));
-  }, []);
+      .catch(() => router.replace("/admin"));
+  }, [router]);
 
   const handleLogout = async () => {
     await logoutAdminAction();
     sessionStorage.removeItem("admin_secret");
-    setShowLogin(true);
+    router.replace("/admin");
   };
 
   const refreshStats = async () => {
@@ -546,10 +541,6 @@ export function AdminPanel() {
       setRemovingMember(null);
     }
   };
-
-  if (showLogin) {
-    return <AdminLogin />;
-  }
 
   if (!isReady) {
     return (
