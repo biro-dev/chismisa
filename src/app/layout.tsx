@@ -47,7 +47,7 @@ export default function RootLayout({ children }: { children: ReactNode }) {
       lang="en"
       className={`${fraunces.variable} ${jakarta.variable} h-full antialiased`}
     >
-      <body className="flex min-h-full flex-col bg-ink text-ink-text">
+      <body className="flex h-dvh flex-col bg-ink text-ink-text">
         <NativeInit />
         {children}
         <ToastViewport />

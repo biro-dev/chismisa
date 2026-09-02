@@ -187,7 +187,7 @@ export function DmView({
           placeholder={`Message ${conversation.otherUser.username}…`}
           maxLength={2000}
           rows={1}
-          className="max-h-[120px] flex-1 resize-none rounded-xl border border-hairline bg-surface-raised px-4 py-2.5 text-sm text-ink-text placeholder:text-ink-muted outline-none transition-colors focus:border-gossip focus:ring-2 focus:ring-gossip/20"
+          className="max-h-[60px] flex-1 resize-none rounded-xl border border-hairline bg-surface-raised px-4 py-2.5 text-sm text-ink-text placeholder:text-ink-muted outline-none transition-colors focus:border-gossip focus:ring-2 focus:ring-gossip/20"
         />
         <button
           onClick={() => void handleSendMessage()}
