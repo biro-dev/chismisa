@@ -28,6 +28,11 @@ export type MessageResult = {
       userId: string;
       username: string;
     }[];
+    mediaUrl?: string | null;
+    mediaType?: string | null;
+    mediaThumb?: string | null;
+    mediaSize?: number | null;
+    mediaDuration?: number | null;
   };
 };
 
@@ -38,7 +43,8 @@ export async function sendGroupMessagePush(
   groupId: string,
   senderId: string,
   senderUsername: string,
-  content: string
+  content: string,
+  mediaType?: string | null
 ) {
   // Bail out fast if no Firebase credentials are configured (e.g. local dev)
   if (!process.env.FIREBASE_SERVICE_ACCOUNT) return;
@@ -68,8 +74,16 @@ export async function sendGroupMessagePush(
     const validTokens = tokens.map((t) => t.token);
     if (validTokens.length === 0) return;
 
-    // Build the notification preview (truncate long messages)
-    const body = `${senderUsername}: ${content.slice(0, 100)}`;
+    // Build the notification preview (truncate long messages, show media label)
+    let body = `${senderUsername}: ${content.slice(0, 100)}`;
+    if (!content && mediaType) {
+      const labels: Record<string, string> = {
+        image: "📷 Photo",
+        video: "🎥 Video",
+        voice: "🎙️ Voice message",
+      };
+      body = `${senderUsername}: ${labels[mediaType] || "📎 Media"}`;
+    }
 
     const messaging = getMessaging();
     const response = await messaging.sendEachForMulticast({
@@ -120,15 +134,34 @@ export async function sendMessageAction(formData: FormData): Promise<MessageResu
   if (!session) return { error: "Not authenticated." };
 
   const groupId = (formData.get("groupId") as string)?.trim();
-  const content = (formData.get("content") as string)?.trim();
+  const content = (formData.get("content") as string)?.trim() || "";
   const replyToId = (formData.get("replyToId") as string)?.trim() || null;
+  // Media fields (optional)
+  const mediaUrl = (formData.get("mediaUrl") as string)?.trim() || null;
+  const mediaType = (formData.get("mediaType") as string)?.trim() || null;
+  const mediaThumb = (formData.get("mediaThumb") as string)?.trim() || null;
+  const mediaSize = formData.get("mediaSize")
+    ? Number(formData.get("mediaSize"))
+    : null;
+  const mediaDuration = formData.get("mediaDuration")
+    ? Number(formData.get("mediaDuration"))
+    : null;
 
-  if (!groupId || !content) {
+  // Validate: either text content or media must be present
+  if (!groupId || (!content && !mediaUrl)) {
     return { error: "Message content is required." };
   }
 
   if (content.length > 2000) {
     return { error: "Message is too long (max 2000 characters)." };
+  }
+
+  // Validate media type if media is present
+  if (mediaType && !["image", "video", "voice"].includes(mediaType)) {
+    return { error: "Invalid media type." };
+  }
+  if (mediaUrl && !mediaType) {
+    return { error: "Media type is required when media URL is provided." };
   }
 
   try {
@@ -165,6 +198,11 @@ export async function sendMessageAction(formData: FormData): Promise<MessageResu
         groupId,
         userId: session.userId,
         replyToId: replyToId || null,
+        mediaUrl,
+        mediaType,
+        mediaThumb,
+        mediaSize,
+        mediaDuration,
       },
       include: {
         user: {
@@ -199,6 +237,11 @@ export async function sendMessageAction(formData: FormData): Promise<MessageResu
           }
         : null,
       reactions: [],
+      mediaUrl: created.mediaUrl,
+      mediaType: created.mediaType as "image" | "video" | "voice" | null,
+      mediaThumb: created.mediaThumb,
+      mediaSize: created.mediaSize,
+      mediaDuration: created.mediaDuration,
     };
 
     // Send the FCM push + realtime broadcast AFTER the response is sent.
@@ -209,7 +252,8 @@ export async function sendMessageAction(formData: FormData): Promise<MessageResu
         groupId,
         session.userId,
         created.user.username,
-        content
+        content,
+        mediaType
       ).catch((err) => console.error("FCM notification error:", err));
 
       triggerGroupEvent(groupId, "new-message", {
@@ -502,5 +546,10 @@ export async function getMessages(groupId: string) {
       userId: r.userId,
       username: r.user.username,
     })),
+    mediaUrl: m.mediaUrl,
+    mediaType: m.mediaType as "image" | "video" | "voice" | null,
+    mediaThumb: m.mediaThumb,
+    mediaSize: m.mediaSize,
+    mediaDuration: m.mediaDuration,
   }));
 }

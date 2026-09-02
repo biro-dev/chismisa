@@ -181,13 +181,20 @@ export function useDm({
   }, [applyIncomingMessage, onConversationActivity]);
 
   // Send a message — optimistic add, replaced by the confirmed version
-  const handleSendMessage = useCallback(async () => {
+  const sendMessageDmCore = async (
+    content: string,
+    replyToId: string | null,
+    media: {
+      mediaUrl: string;
+      mediaType: "image" | "video" | "voice";
+      mediaThumb?: string | null;
+      mediaSize?: number | null;
+      mediaDuration?: number | null;
+    } | null
+  ) => {
     const id = conversationIdRef.current;
-    const content = messageInput.trim();
-    if (!id || !content) return;
+    if (!id) return;
 
-    setMessageInput("");
-    setActionError("");
     const optimistic: DirectMessage = {
       id: `temp-${Date.now()}`,
       content,
@@ -204,13 +211,19 @@ export function useDm({
           }
         : null,
       reactions: [],
+      ...(media ? {
+        mediaUrl: media.mediaUrl,
+        mediaType: media.mediaType,
+        mediaThumb: media.mediaThumb ?? null,
+        mediaSize: media.mediaSize ?? null,
+        mediaDuration: media.mediaDuration ?? null,
+      } : {}),
     };
     setMessages((prev) => [...prev, optimistic]);
-    const replyToId = replyTo?.id ?? null;
     setReplyTo(null);
 
     try {
-      const result = await sendDirectMessageAction(id, content, replyToId);
+      const result = await sendDirectMessageAction(id, content, replyToId, media ?? undefined);
       if (result.error) {
         setActionError(result.error);
         setMessages((prev) => prev.filter((m) => m.id !== optimistic.id));
@@ -229,7 +242,43 @@ export function useDm({
       setMessages((prev) => prev.filter((m) => m.id !== optimistic.id));
       setMessageInput(content);
     }
-  }, [messageInput, userId, replyTo, onConversationActivity]);
+  };
+
+  // Store pending media (set by composer when a file is selected, cleared after send)
+  const [pendingDmMedia, setPendingDmMedia] = useState<{
+    mediaUrl: string;
+    mediaType: "image" | "video" | "voice";
+    mediaThumb?: string | null;
+    mediaSize?: number | null;
+    mediaDuration?: number | null;
+  } | null>(null);
+
+  const handleSendMessage = useCallback(async () => {
+    const content = messageInput.trim();
+    if (!content && !pendingDmMedia) return;
+
+    const media = pendingDmMedia;
+    setMessageInput("");
+    setPendingDmMedia(null);
+
+    await sendMessageDmCore(content, replyTo?.id ?? null, media);
+  }, [messageInput, userId, replyTo, onConversationActivity, pendingDmMedia, sendMessageDmCore]);
+
+  // Send a media message (called from the composer after upload completes)
+  const sendDmMediaMessage = useCallback(
+    async (media: {
+      mediaUrl: string;
+      mediaType: "image" | "video" | "voice";
+      mediaThumb?: string | null;
+      mediaSize?: number | null;
+      mediaDuration?: number | null;
+    }, caption?: string) => {
+      const content = caption?.trim() || "";
+      setPendingDmMedia(null);
+      await sendMessageDmCore(content, replyTo?.id ?? null, media);
+    },
+    [replyTo, sendMessageDmCore]
+  );
 
   // Toggle a reaction (optimistic; server broadcast reconciles others)
   const handleReact = useCallback(
@@ -311,5 +360,8 @@ export function useDm({
     handleReact,
     handleDeleteMessage,
     handleEditMessage,
+    sendDmMediaMessage,
+    pendingDmMedia,
+    setPendingDmMedia,
   };
 }

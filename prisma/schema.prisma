@@ -53,6 +53,12 @@ model Message {
   deletedAt  DateTime?
   editedAt   DateTime?
   createdAt  DateTime           @default(now())
+  // Media attachment (image / video / voice) — stored in Firebase Storage
+  mediaUrl    String?
+  mediaType   String?           // "image" | "video" | "voice"
+  mediaThumb  String?           // video thumbnail URL
+  mediaSize   Int?              // file size in bytes
+  mediaDuration Int?            // duration in seconds (voice/video)
   group      Group              @relation(fields: [groupId], references: [id], onDelete: Cascade)
   user       User               @relation(fields: [userId], references: [id], onDelete: Cascade)
   replyTo    Message?           @relation("MessageReplies", fields: [replyToId], references: [id], onDelete: SetNull)
@@ -118,6 +124,12 @@ model DirectMessage {
   deletedAt      DateTime?
   editedAt       DateTime?
   createdAt      DateTime                @default(now())
+  // Media attachment (image / video / voice) — stored in Firebase Storage
+  mediaUrl    String?
+  mediaType   String?           // "image" | "video" | "voice"
+  mediaThumb  String?           // video thumbnail URL
+  mediaSize   Int?              // file size in bytes
+  mediaDuration Int?            // duration in seconds (voice/video)
   conversation   Conversation            @relation(fields: [conversationId], references: [id], onDelete: Cascade)
   sender         User                    @relation("DirectMessageSender", fields: [senderId], references: [id], onDelete: Cascade)
   replyTo        DirectMessage?          @relation("DirectMessageReplies", fields: [replyToId], references: [id], onDelete: SetNull)

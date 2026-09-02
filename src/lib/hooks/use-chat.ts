@@ -503,12 +503,17 @@ export function useChat({
   );
 
   // Optimistic message sending — append locally, reconcile with server
-  const handleSendMessage = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!selectedGroup || !messageInput.trim()) return;
-
-    const content = messageInput.trim();
-    const replyToMsg = replyTo;
+  const sendMessageCore = async (
+    content: string,
+    replyToMsg: Message | null,
+    media: {
+      mediaUrl: string;
+      mediaType: "image" | "video" | "voice";
+      mediaThumb?: string | null;
+      mediaSize?: number | null;
+      mediaDuration?: number | null;
+    } | null
+  ) => {
     const optimisticId = `temp-${Date.now()}-${Math.random().toString(36).slice(2)}`;
     const optimisticMsg: Message = {
       id: optimisticId,
@@ -524,6 +529,13 @@ export function useChat({
           }
         : null,
       reactions: [],
+      ...(media ? {
+        mediaUrl: media.mediaUrl,
+        mediaType: media.mediaType,
+        mediaThumb: media.mediaThumb ?? null,
+        mediaSize: media.mediaSize ?? null,
+        mediaDuration: media.mediaDuration ?? null,
+      } : {}),
     };
 
     // Track optimistic message ID
@@ -531,27 +543,28 @@ export function useChat({
 
     // Optimistic append — instant feedback
     setMessages((prev) => [...prev, optimisticMsg]);
-    setMessageInput("");
     setReplyTo(null);
     setActionError("");
 
     const formData = new FormData();
-    formData.append("groupId", selectedGroup.id);
+    formData.append("groupId", selectedGroup!.id);
     formData.append("content", content);
     if (replyToMsg) {
       formData.append("replyToId", replyToMsg.id);
+    }
+    if (media) {
+      formData.append("mediaUrl", media.mediaUrl);
+      formData.append("mediaType", media.mediaType);
+      if (media.mediaThumb) formData.append("mediaThumb", media.mediaThumb);
+      if (media.mediaSize) formData.append("mediaSize", String(media.mediaSize));
+      if (media.mediaDuration) formData.append("mediaDuration", String(media.mediaDuration));
     }
 
     try {
       const result = await sendMessageAction(formData);
       if (result.success && result.message) {
-        // Replace optimistic message with the server-confirmed one.
-        // First remove any copy the polling may have already appended
-        // (e.g. if the poll fetched the confirmed message before this
-        // action resolved), then swap the optimistic entry in.
         const confirmed = result.message as Message;
         optimisticMessageIdsRef.current.delete(optimisticId);
-        // Track the server ID so subsequent polls don't re-add this message
         optimisticMessageIdsRef.current.add(confirmed.id);
         setMessages((prev) => {
           const withoutPolledCopy = prev.filter((m) => m.id !== confirmed.id);
@@ -561,18 +574,58 @@ export function useChat({
         });
         lastMessageTimeRef.current = confirmed.createdAt;
       } else {
-        // Rollback on failure
         optimisticMessageIdsRef.current.delete(optimisticId);
         setMessages((prev) => prev.filter((m) => m.id !== optimisticId));
         setActionError(result.error || "Failed to send message.");
       }
     } catch {
-      // Rollback on error
       optimisticMessageIdsRef.current.delete(optimisticId);
       setMessages((prev) => prev.filter((m) => m.id !== optimisticId));
       setActionError("Failed to send message.");
     }
   };
+
+  // Store pending media (set by composer when a file is selected, cleared after send)
+  const [pendingMedia, setPendingMedia] = useState<{
+    mediaUrl: string;
+    mediaType: "image" | "video" | "voice";
+    mediaThumb?: string | null;
+    mediaSize?: number | null;
+    mediaDuration?: number | null;
+  } | null>(null);
+
+  const handleSendMessage = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!selectedGroup || (!messageInput.trim() && !pendingMedia)) return;
+
+    const content = messageInput.trim();
+    const replyToMsg = replyTo;
+    const media = pendingMedia;
+
+    setMessageInput("");
+    setPendingMedia(null);
+
+    await sendMessageCore(content, replyToMsg, media);
+  };
+
+  // Send a media message (called from the composer after upload completes)
+  const sendMediaMessage = useCallback(
+    async (media: {
+      mediaUrl: string;
+      mediaType: "image" | "video" | "voice";
+      mediaThumb?: string | null;
+      mediaSize?: number | null;
+      mediaDuration?: number | null;
+    }, caption?: string) => {
+      if (!selectedGroup) return;
+      const content = caption?.trim() || "";
+      const replyToMsg = replyTo;
+      setReplyTo(null);
+      setPendingMedia(null);
+      await sendMessageCore(content, replyToMsg, media);
+    },
+    [selectedGroup, replyTo, sendMessageCore]
+  );
 
   // Optimistic reactions — toggle locally, reconcile with server
   const handleReact = useCallback(
@@ -859,6 +912,9 @@ export function useChat({
     handleReact,
     handleDeleteMessage,
     handleEditMessage,
+    sendMediaMessage,
+    pendingMedia,
+    setPendingMedia,
     selectGroup,
     removeGroupFromState,
     typingUsers,

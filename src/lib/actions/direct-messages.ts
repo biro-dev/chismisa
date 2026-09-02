@@ -46,6 +46,11 @@ function serializeDm(
     deletedAt: Date | null;
     editedAt: Date | null;
     createdAt: Date;
+    mediaUrl?: string | null;
+    mediaType?: string | null;
+    mediaThumb?: string | null;
+    mediaSize?: number | null;
+    mediaDuration?: number | null;
     sender: { id: string; username: string };
     replyTo: {
       id: string;
@@ -81,6 +86,11 @@ function serializeDm(
       userId: r.userId,
       username: r.user.username,
     })),
+    mediaUrl: m.mediaUrl,
+    mediaType: m.mediaType as "image" | "video" | "voice" | null,
+    mediaThumb: m.mediaThumb,
+    mediaSize: m.mediaSize,
+    mediaDuration: m.mediaDuration,
   };
 }
 
@@ -251,19 +261,36 @@ export type DmMessageResult = DmActionResult & {
   message?: ReturnType<typeof serializeDm>;
 };
 
-/** Send a direct message (optionally as a reply). */
+/** Send a direct message (optionally as a reply, with optional media). */
 export async function sendDirectMessageAction(
   conversationId: string,
   content: string,
-  replyToId?: string | null
+  replyToId?: string | null,
+  media?: {
+    mediaUrl?: string | null;
+    mediaType?: string | null;
+    mediaThumb?: string | null;
+    mediaSize?: number | null;
+    mediaDuration?: number | null;
+  }
 ): Promise<DmMessageResult> {
   const session = await getSession();
   if (!session) return { error: "Not authenticated." };
 
   const trimmed = content.trim();
-  if (!trimmed) return { error: "Message content is required." };
+  if (!trimmed && !media?.mediaUrl) {
+    return { error: "Message content is required." };
+  }
   if (trimmed.length > 2000) {
     return { error: "Message is too long (max 2000 characters)." };
+  }
+
+  // Validate media type if present
+  if (media?.mediaType && !["image", "video", "voice"].includes(media.mediaType)) {
+    return { error: "Invalid media type." };
+  }
+  if (media?.mediaUrl && !media?.mediaType) {
+    return { error: "Media type is required when media URL is provided." };
   }
 
   try {
@@ -288,6 +315,11 @@ export async function sendDirectMessageAction(
         senderId: session.userId,
         content: trimmed,
         replyToId: validReplyToId,
+        mediaUrl: media?.mediaUrl || null,
+        mediaType: media?.mediaType || null,
+        mediaThumb: media?.mediaThumb || null,
+        mediaSize: media?.mediaSize || null,
+        mediaDuration: media?.mediaDuration || null,
       },
       include: {
         sender: { select: { id: true, username: true } },

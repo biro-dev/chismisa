@@ -547,14 +547,76 @@ export const MessageBubble = memo(function MessageBubble({
               </div>
             </div>
           ) : (
-            <p className="whitespace-pre-wrap break-words">
-              {msg.content}
-              {!msg.deletedAt && msg.editedAt && (
-                <span className="ml-1 align-baseline text-[10px] italic opacity-70">
-                  (edited)
-                </span>
+            <>
+              {/* Media attachment */}
+              {msg.mediaUrl && msg.mediaType && (
+                <div className="mb-2">
+                  {msg.mediaType === "image" && (
+                    <img
+                      src={msg.mediaUrl}
+                      alt="Shared image"
+                      className="max-h-60 max-w-full cursor-pointer rounded-xl object-contain"
+                      onClick={() => {
+                        // Open fullscreen lightbox
+                        window.open(msg.mediaUrl!, "_blank");
+                      }}
+                    />
+                  )}
+                  {msg.mediaType === "video" && (
+                    <video
+                      src={msg.mediaUrl}
+                      poster={msg.mediaThumb ?? undefined}
+                      controls
+                      className="max-h-60 max-w-full rounded-xl"
+                      preload="metadata"
+                    />
+                  )}
+                  {msg.mediaType === "voice" && (
+                    <div className="flex items-center gap-2 rounded-xl bg-black/10 px-3 py-2">
+                      <audio src={msg.mediaUrl} preload="metadata" className="hidden" id={`audio-${msg.id}`} />
+                      <button
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          const audio = document.getElementById(`audio-${msg.id}`) as HTMLAudioElement;
+                          if (audio) {
+                            if (audio.paused) audio.play();
+                            else audio.pause();
+                          }
+                        }}
+                        className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-white/20 text-white"
+                      >
+                        ▶
+                      </button>
+                      <div className="flex-1">
+                        <div className="h-1.5 w-full overflow-hidden rounded-full bg-white/20">
+                          <div className="h-full w-0 rounded-full bg-white/60" />
+                        </div>
+                        {msg.mediaDuration && (
+                          <p className="mt-0.5 text-[10px] opacity-70">
+                            {Math.floor(msg.mediaDuration / 60)}:{(msg.mediaDuration % 60).toString().padStart(2, "0")}
+                          </p>
+                        )}
+                      </div>
+                    </div>
+                  )}
+                </div>
               )}
-            </p>
+              {/* Text content */}
+              {msg.content && (
+                <p className="whitespace-pre-wrap break-words">
+                  {msg.content}
+                  {!msg.deletedAt && msg.editedAt && (
+                    <span className="ml-1 align-baseline text-[10px] italic opacity-70">
+                      (edited)
+                    </span>
+                  )}
+                </p>
+              )}
+              {/* Media-only message with no caption — show type indicator */}
+              {!msg.content && msg.mediaUrl && msg.mediaType === "voice" && (
+                <p className="text-[10px] italic opacity-50">Voice message</p>
+              )}
+            </>
           )}
 
           {/* Applied reaction badges - overlapping on the bubble's bottom corner */}

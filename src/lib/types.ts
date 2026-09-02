@@ -42,6 +42,12 @@ export type Message = {
     username: string;
   } | null;
   reactions: MessageReaction[];
+  // Media attachment (image / video / voice)
+  mediaUrl?: string | null;
+  mediaType?: "image" | "video" | "voice" | null;
+  mediaThumb?: string | null;
+  mediaSize?: number | null;
+  mediaDuration?: number | null;
 };
 
 export type DashboardProps = {

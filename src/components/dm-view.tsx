@@ -4,6 +4,7 @@ import { useEffect, useRef } from "react";
 import { ArrowLeft, Send, X } from "lucide-react";
 import { MessageBubble } from "@/components/message-bubble";
 import { TimeDivider, chatDividerLabel } from "@/components/time-divider";
+import { MediaPicker } from "@/components/media-picker";
 import type { useDm } from "@/lib/hooks/use-dm";
 import type { Conversation } from "@/lib/types";
 import { groupColor } from "@/lib/group-color";
@@ -37,6 +38,9 @@ export function DmView({
     handleReact,
     handleDeleteMessage,
     handleEditMessage,
+    sendDmMediaMessage,
+    pendingDmMedia,
+    setPendingDmMedia,
   } = dm;
   const scrollContainerRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
@@ -181,6 +185,12 @@ export function DmView({
 
       {/* Input */}
       <div className="safe-bottom flex shrink-0 items-end gap-2 border-t border-hairline p-3">
+        <MediaPicker
+          userId={userId}
+          onPendingMediaChange={(media) => {
+            setPendingDmMedia(media);
+          }}
+        />
         <textarea
           ref={inputRef}
           value={messageInput}
@@ -188,17 +198,35 @@ export function DmView({
           onKeyDown={(e) => {
             if (e.key === "Enter" && !e.shiftKey) {
               e.preventDefault();
-              void handleSendMessage();
+              if (pendingDmMedia) {
+                const caption = messageInput.trim();
+                const media = pendingDmMedia;
+                setMessageInput("");
+                setPendingDmMedia(null);
+                void sendDmMediaMessage(media, caption || undefined);
+              } else {
+                void handleSendMessage();
+              }
             }
           }}
-          placeholder={`Message ${conversation.otherUser.username}…`}
+          placeholder={pendingDmMedia ? "Add a caption…" : `Message ${conversation.otherUser.username}…`}
           maxLength={2000}
           rows={1}
           className="min-w-0 max-h-[60px] flex-1 resize-none rounded-xl border border-hairline bg-surface-raised px-4 py-2.5 text-sm text-ink-text placeholder:text-ink-muted outline-none transition-colors focus:border-gossip focus:ring-2 focus:ring-gossip/20"
         />
         <button
-          onClick={() => void handleSendMessage()}
-          disabled={!messageInput.trim()}
+          onClick={() => {
+            if (pendingDmMedia) {
+              const caption = messageInput.trim();
+              const media = pendingDmMedia;
+              setMessageInput("");
+              setPendingDmMedia(null);
+              void sendDmMediaMessage(media, caption || undefined);
+            } else {
+              void handleSendMessage();
+            }
+          }}
+          disabled={!messageInput.trim() && !pendingDmMedia}
           className="rounded-xl bg-gossip-deep p-2.5 text-white transition-colors hover:bg-gossip disabled:opacity-40"
           title="Send message"
         >

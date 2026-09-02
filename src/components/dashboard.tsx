@@ -28,6 +28,7 @@ import { TimeDivider, chatDividerLabel } from "@/components/time-divider";
 import { Modal } from "@/components/modal";
 import { SearchModal } from "@/components/search-modal";
 import { DmView } from "@/components/dm-view";
+import { MediaPicker } from "@/components/media-picker";
 import { useDm } from "@/lib/hooks/use-dm";
 import {
   findUserByUsername,
@@ -86,6 +87,7 @@ export function Dashboard({
     selectedGroupId,
     messageInput,
     handleInputChange,
+    setMessageInput,
     replyTo,
     setReplyTo,
     actionError,
@@ -98,6 +100,9 @@ export function Dashboard({
     handleReact,
     handleDeleteMessage,
     handleEditMessage,
+    sendMediaMessage,
+    pendingMedia,
+    setPendingMedia,
     selectGroup,
     removeGroupFromState,
     typingUsers,
@@ -662,21 +667,39 @@ export function Dashboard({
 
             {/* Message input */}
             <form
-              onSubmit={handleSendMessage}
+              onSubmit={async (e) => {
+                e.preventDefault();
+                // If there's pending media, send it with optional caption
+                if (pendingMedia) {
+                  const caption = messageInput.trim();
+                  const media = pendingMedia;
+                  setMessageInput("");
+                  setPendingMedia(null);
+                  await sendMediaMessage(media, caption || undefined);
+                } else {
+                  handleSendMessage(e);
+                }
+              }}
               className="safe-bottom shrink-0 border-t border-hairline p-3 sm:p-4"
             >
               <div className="flex items-center gap-2">
+                <MediaPicker
+                  userId={userId}
+                  onPendingMediaChange={(media) => {
+                    setPendingMedia(media);
+                  }}
+                />
                 <input
                   type="text"
                   value={messageInput}
                   onChange={(e) => handleInputChange(e.target.value)}
-                  placeholder={`Message #${selectedGroup.name}…`}
+                  placeholder={pendingMedia ? "Add a caption…" : `Message #${selectedGroup.name}…`}
                   maxLength={2000}
                   className="min-w-0 flex-1 rounded-xl border border-hairline bg-surface-raised px-4 py-2.5 text-sm text-ink-text placeholder:text-ink-muted outline-none transition-colors focus:border-gossip focus:ring-2 focus:ring-gossip/20"
                 />
                 <button
                   type="submit"
-                  disabled={!messageInput.trim()}
+                  disabled={!messageInput.trim() && !pendingMedia}
                   className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-gossip-deep text-white transition-all hover:bg-gossip disabled:cursor-not-allowed disabled:opacity-40"
                 >
                   <Send className="h-4 w-4" />
