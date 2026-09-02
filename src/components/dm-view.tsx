@@ -90,7 +90,14 @@ export function DmView({
       {/* Messages */}
       <div
         ref={scrollContainerRef}
-        className="flex-1 overflow-y-auto px-3 py-4 sm:px-5"
+        onContextMenu={(e) => {
+          // Stop the native long-press "select to copy" UI on phones —
+          // it hijacks the long-press reaction gesture.
+          if (window.matchMedia("(hover: none)").matches) {
+            e.preventDefault();
+          }
+        }}
+        className="chat-scroll min-h-0 flex-1 overflow-y-auto px-3 py-4 sm:px-5"
       >
         {loading ? (
           <div className="flex h-full items-center justify-center">
@@ -173,7 +180,7 @@ export function DmView({
       )}
 
       {/* Input */}
-      <div className="safe-bottom flex items-end gap-2 border-t border-hairline p-3">
+      <div className="safe-bottom flex shrink-0 items-end gap-2 border-t border-hairline p-3">
         <textarea
           ref={inputRef}
           value={messageInput}
@@ -187,7 +194,7 @@ export function DmView({
           placeholder={`Message ${conversation.otherUser.username}…`}
           maxLength={2000}
           rows={1}
-          className="max-h-[60px] flex-1 resize-none rounded-xl border border-hairline bg-surface-raised px-4 py-2.5 text-sm text-ink-text placeholder:text-ink-muted outline-none transition-colors focus:border-gossip focus:ring-2 focus:ring-gossip/20"
+          className="min-w-0 max-h-[60px] flex-1 resize-none rounded-xl border border-hairline bg-surface-raised px-4 py-2.5 text-sm text-ink-text placeholder:text-ink-muted outline-none transition-colors focus:border-gossip focus:ring-2 focus:ring-gossip/20"
         />
         <button
           onClick={() => void handleSendMessage()}

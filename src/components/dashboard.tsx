@@ -543,7 +543,14 @@ export function Dashboard({
             <div
               ref={scrollContainerRef}
               onScroll={handleScroll}
-              className="flex-1 overflow-y-auto px-3 py-4 sm:px-5"
+              onContextMenu={(e) => {
+                // Stop the native long-press "select to copy" UI on phones —
+                // it hijacks the long-press reaction gesture.
+                if (window.matchMedia("(hover: none)").matches) {
+                  e.preventDefault();
+                }
+              }}
+              className="chat-scroll min-h-0 flex-1 overflow-y-auto px-3 py-4 sm:px-5"
             >
               {messages.length === 0 ? (
                 <div className="flex h-full flex-col items-center justify-center text-center">
@@ -656,7 +663,7 @@ export function Dashboard({
             {/* Message input */}
             <form
               onSubmit={handleSendMessage}
-              className="safe-bottom border-t border-hairline p-3 sm:p-4"
+              className="safe-bottom shrink-0 border-t border-hairline p-3 sm:p-4"
             >
               <div className="flex items-center gap-2">
                 <input
@@ -665,7 +672,7 @@ export function Dashboard({
                   onChange={(e) => handleInputChange(e.target.value)}
                   placeholder={`Message #${selectedGroup.name}…`}
                   maxLength={2000}
-                  className="flex-1 rounded-xl border border-hairline bg-surface-raised px-4 py-2.5 text-sm text-ink-text placeholder:text-ink-muted outline-none transition-colors focus:border-gossip focus:ring-2 focus:ring-gossip/20"
+                  className="min-w-0 flex-1 rounded-xl border border-hairline bg-surface-raised px-4 py-2.5 text-sm text-ink-text placeholder:text-ink-muted outline-none transition-colors focus:border-gossip focus:ring-2 focus:ring-gossip/20"
                 />
                 <button
                   type="submit"

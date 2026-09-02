@@ -563,7 +563,7 @@ export function AdminPanel() {
   }
 
   return (
-    <div className="flex h-screen overflow-hidden">
+    <div className="flex h-dvh overflow-hidden">
       {/* Mobile sidebar overlay */}
       {sidebarOpen && (
         <div
@@ -676,7 +676,7 @@ export function AdminPanel() {
 
         {/* Groups list */}
         <div
-          className={`flex-1 overflow-y-auto px-2 py-2 ${
+          className={`min-h-0 flex-1 overflow-y-auto px-2 py-2 ${
             viewMode === "groups" ? "" : "hidden"
           }`}
         >
@@ -723,7 +723,7 @@ export function AdminPanel() {
 
         {/* DM conversations list */}
         <div
-          className={`flex-1 overflow-y-auto px-2 py-2 ${
+          className={`min-h-0 flex-1 overflow-y-auto px-2 py-2 ${
             viewMode === "dms" ? "" : "hidden"
           }`}
         >
@@ -849,7 +849,7 @@ export function AdminPanel() {
               <div
                 ref={scrollContainerRef}
                 onScroll={handleScroll}
-                className="flex-1 overflow-y-auto px-3 py-4 sm:px-5"
+                className="min-h-0 flex-1 overflow-y-auto px-3 py-4 sm:px-5"
               >
                 {dmLoading && !dmMessages ? (
                   <div className="flex h-full items-center justify-center text-sm text-ink-muted">
@@ -944,7 +944,7 @@ export function AdminPanel() {
             <div
               ref={scrollContainerRef}
               onScroll={handleScroll}
-              className="flex-1 overflow-y-auto px-3 py-4 sm:px-5"
+              className="min-h-0 flex-1 overflow-y-auto px-3 py-4 sm:px-5"
             >
               {messagesLoading && !groupMessages ? (
                 <div className="flex h-full items-center justify-center text-sm text-ink-muted">

@@ -258,6 +258,28 @@ body {
   }
 }
 
+/* The chat transcript must never expose selectable text to the native
+   long-press "select to copy" UI: it hijacks the long-press reaction
+   gesture. Desktop keeps selection inside bubbles via the override above. */
+.chat-scroll {
+  -webkit-user-select: none;
+  user-select: none;
+  -webkit-touch-callout: none;
+}
+
+/* Belt-and-braces for the native app: no text selection anywhere except
+   form fields, regardless of what the WebView's media queries report. */
+html.native-app body {
+  -webkit-user-select: none;
+  user-select: none;
+}
+
+html.native-app input,
+html.native-app textarea {
+  -webkit-user-select: text;
+  user-select: text;
+}
+
 /* Highlight flash for a message jumped to via search results */
 @keyframes messageHighlight {
   0%, 60% {
