@@ -747,7 +747,7 @@ export const MessageBubble = memo(function MessageBubble({
               <div className="fixed inset-0 z-[80] flex items-center justify-center bg-black/50 p-4">
                 <div
                   ref={emojiPickerRef}
-                  className="flex max-h-[88dvh] w-full max-w-sm flex-col rounded-2xl border border-hairline bg-surface-raised shadow-2xl"
+                  className="app-max-h flex w-full max-w-sm flex-col rounded-2xl border border-hairline bg-surface-raised shadow-2xl"
                   onClick={(e) => e.stopPropagation()}
                 >
                   {/* Header */}

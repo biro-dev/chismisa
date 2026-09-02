@@ -312,6 +312,32 @@ html.native-app textarea {
   padding-right: env(safe-area-inset-right);
 }
 
+/* Version-proof app height: 100dvh is only understood by Chromium 108+.
+   On older Android System WebViews the dvh declaration is discarded, so a
+   plain 100vh fallback must come first or the layout grows with content and
+   pushes the composer off-screen. The Capacitor WebView has no browser
+   chrome, so 100vh is solid there; modern WebViews get the finer dvh. */
+.app-h {
+  height: 100vh;
+}
+
+@supports (height: 100dvh) {
+  .app-h {
+    height: 100dvh;
+  }
+}
+
+/* Same fallback pattern for the emoji picker's max height. */
+.app-max-h {
+  max-height: 88vh;
+}
+
+@supports (height: 100dvh) {
+  .app-max-h {
+    max-height: 88dvh;
+  }
+}
+
 /* One deliberate motion moment: a message arriving/sending gently rises in */
 @keyframes bubbleIn {
   from {

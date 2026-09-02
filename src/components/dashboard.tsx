@@ -398,7 +398,7 @@ export function Dashboard({
     }
   };
   return (
-    <div className="flex h-dvh overflow-hidden">
+    <div className="app-h flex overflow-hidden">
       {/* Mobile sidebar overlay */}
       {sidebarOpen && (
         <div
