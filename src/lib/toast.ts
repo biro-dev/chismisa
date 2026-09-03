@@ -1,5 +1,7 @@
 "use client";
 
+import { TOAST_DURATION_MS } from "@/lib/constants";
+
 export type ToastType = "success" | "error";
 
 export type Toast = {
@@ -38,7 +40,7 @@ export function showToast(
   const id = nextId++;
   toasts = [...toasts, { id, message, type }];
   emit();
-  setTimeout(() => dismissToast(id), 3500);
+  setTimeout(() => dismissToast(id), TOAST_DURATION_MS);
   return id;
 }
 

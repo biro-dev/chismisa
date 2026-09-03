@@ -377,3 +377,70 @@ html.native-app textarea {
     animation: none;
   }
 }
+
+/* ─── Accessibility: focus indicators ───────────────────────────────────────
+   The default browser focus ring is invisible on dark backgrounds. These
+   tokens give every focusable element a clear, high-contrast focus state
+   without clashing with the gossip-pink accent. */
+:focus-visible {
+  outline: 2px solid var(--gossip);
+  outline-offset: 2px;
+  border-radius: 6px;
+}
+
+/* Buttons that use bg-gossip already have a strong fill — override the ring
+   to use the deeper gossip tone so it reads against the pink surface. */
+button:focus-visible,
+a:focus-visible {
+  outline-color: var(--gossip-deep);
+}
+
+/* Subtle button press feedback for interactive elements */
+button:not(:disabled):active,
+a:active {
+  transform: scale(0.98);
+  transition: transform 100ms ease-out;
+}
+
+/* Visually-hidden but accessible to screen readers — for skip links and
+   status text that should be read aloud but never visible. */
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border-width: 0;
+}
+
+/* Skip link — hidden until focused via keyboard navigation */
+.skip-link {
+  position: absolute;
+  top: -100%;
+  left: 0;
+  z-index: 100;
+  padding: 0.75rem 1rem;
+  background: var(--gossip);
+  color: white;
+  font-weight: 600;
+  border-radius: 0 0 6px 0;
+  transform: translateY(-100%);
+  transition: transform 150ms ease-out;
+}
+.skip-link:focus {
+  top: 0;
+  transform: translateY(0);
+}
+
+/* Ensure interactive elements hit at least 44×44px on touch devices so users
+   don't have to aim precisely at small targets. */
+@media (pointer: coarse) {
+  button:not(.compact),
+  a:not(.compact) {
+    min-height: 44px;
+    min-width: 44px;
+  }
+}

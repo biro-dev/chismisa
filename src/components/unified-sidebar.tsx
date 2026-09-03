@@ -14,7 +14,6 @@ export function UnifiedSidebar({
   selectedId,
   selectedKind,
   onSelectConversation,
-  onShowNewDm,
   sidebarOpen,
   onCloseSidebar,
   onShowCreate,
@@ -29,7 +28,6 @@ export function UnifiedSidebar({
   selectedId: string | null;
   selectedKind: "dm" | "group" | null;
   onSelectConversation: (id: string, kind: "dm" | "group") => void;
-  onShowNewDm: () => void;
   sidebarOpen: boolean;
   onCloseSidebar: () => void;
   onShowCreate: () => void;
