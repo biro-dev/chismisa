@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import { Camera, Mic, RefreshCw, Square, Video, X } from "lucide-react";
+import { Capacitor } from "@capacitor/core";
 import {
   compressImage,
   formatDuration,
@@ -27,6 +28,28 @@ type MediaPickerProps = {
 };
 
 /**
+ * Check if microphone permission is granted.
+ * Returns true if granted, false if denied or unavailable.
+ */
+async function checkMicrophonePermission(): Promise<boolean> {
+  try {
+    // Check if mediaDevices API is available
+    if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+      return false;
+    }
+    
+    // Try to get user media to trigger permission prompt
+    const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+    // Immediately stop the stream - we just wanted to check permission
+    stream.getTracks().forEach((track) => track.stop());
+    return true;
+  } catch (err) {
+    console.error("Microphone permission check failed:", err);
+    return false;
+  }
+}
+
+/**
  * Composer media controls — Messenger-style, never blocking:
  *
  * - Picking a photo/video (or stopping a voice recording) creates a draft
@@ -38,6 +61,7 @@ type MediaPickerProps = {
  */
 export function MediaPicker({ userId, draft, onDraftChange }: MediaPickerProps) {
   const [error, setError] = useState<string | null>(null);
+  const [micPermissionGranted, setMicPermissionGranted] = useState<boolean | null>(null);
   const imageInputRef = useRef<HTMLInputElement>(null);
   const videoInputRef = useRef<HTMLInputElement>(null);
 
@@ -127,8 +151,21 @@ export function MediaPicker({ userId, draft, onDraftChange }: MediaPickerProps) 
 
   const startRecording = useCallback(async () => {
     try {
+      // Check if mediaDevices API is available
+      if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+        setError("Voice recording is not supported on this device.");
+        return;
+      }
+
+      // Check/request microphone permission first
       const mimeType = getSupportedMimeType();
+      
+      // Request microphone access - this will trigger the permission dialog
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      
+      // Permission granted - update state
+      setMicPermissionGranted(true);
+      
       const options = mimeType ? { mimeType } : undefined;
       const mediaRecorder = new MediaRecorder(stream, options);
       mediaRecorderRef.current = mediaRecorder;
@@ -165,10 +202,27 @@ export function MediaPicker({ userId, draft, onDraftChange }: MediaPickerProps) 
       setError(null);
     } catch (err) {
       console.error("Voice recording error:", err);
-      const msg = err instanceof Error && err.name === "NotAllowedError"
-        ? "Microphone access denied. Please allow microphone permission in your device settings."
-        : "Could not start voice recording. Please check your microphone.";
-      setError(msg);
+      
+      // Handle specific error types
+      if (err instanceof Error) {
+        if (err.name === "NotAllowedError" || err.name === "PermissionDeniedError") {
+          setMicPermissionGranted(false);
+          // Provide helpful instructions based on platform
+          const isNative = Capacitor.isNativePlatform();
+          const instructions = isNative
+            ? "Microphone access denied. Please enable microphone permission in your device settings: Settings > Apps > Chismisa > Permissions > Microphone."
+            : "Microphone access denied. Please allow microphone permission in your browser settings and refresh the page.";
+          setError(instructions);
+        } else if (err.name === "NotFoundError" || err.name === "DevicesNotFoundError") {
+          setError("No microphone found. Please connect a microphone and try again.");
+        } else if (err.name === "NotReadableError" || err.name === "TrackStartError") {
+          setError("Microphone is in use by another app. Please close other apps and try again.");
+        } else {
+          setError("Could not start voice recording. Error: " + err.message);
+        }
+      } else {
+        setError("Could not start voice recording. Please check your microphone.");
+      }
     }
   }, [userId, draft, discardDraft, onDraftChange]);
 

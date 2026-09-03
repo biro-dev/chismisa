@@ -13,10 +13,11 @@ const nextConfig: NextConfig = {
           { key: "X-Content-Type-Options", value: "nosniff" },
           // Don't leak full URLs (which contain ?group=<id>) to other sites.
           { key: "Referrer-Policy", value: "strict-origin-when-cross-origin" },
-          // Disable unused browser features (camera/mic/etc. are not used).
+          // Disable unused browser features (geolocation is not used)
+          // Camera and microphone are needed for photo/video/voice messages
           {
             key: "Permissions-Policy",
-            value: "camera=(), microphone=(), geolocation=()",
+            value: "camera=(self), microphone=(self), geolocation=()",
           },
           // Content Security Policy — restricts what the page can load and
           // connect to. Allowlist covers everything the app actually uses:
