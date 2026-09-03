@@ -700,29 +700,29 @@ export const MessageBubble = memo(function MessageBubble({
             </>
           )}
 
-          {/* Applied reaction badges - overlapping on the bubble's bottom corner */}
+          {/* Applied reaction badges - positioned below the bubble's bottom corner */}
           {!msg.deletedAt && groupedReactions.length > 0 && (
             <div
               onPointerDown={(e) => e.stopPropagation()}
-              className={`absolute bottom-[-10px] z-10 flex ${
+              className={`absolute bottom-[-14px] z-10 flex gap-1 ${
                 isOwn ? "right-2" : "left-2"
               }`}
             >
-              {groupedReactions.slice(0, 3).map(([emoji, reactions], i) => (
+              {groupedReactions.slice(0, 3).map(([emoji, reactions]) => (
                 <button
                   key={emoji}
                   onClick={(e) => {
                     e.stopPropagation();
                     onReact(msg.id, emoji);
                   }}
-                  className={`flex items-center gap-0.5 rounded-full border px-1.5 py-0.5 text-xs shadow-md transition-transform hover:scale-105 ${
+                  className={`flex items-center gap-0.5 rounded-full border px-2 py-1 text-xs shadow-md transition-transform hover:scale-105 ${
                     reactions.some((r) => r.userId === userId)
                       ? "border-gossip bg-gossip-deep text-white"
                       : "border-hairline bg-surface-raised text-ink-text"
-                  } ${i > 0 ? "-ml-1.5" : ""}`}
+                  }`}
                   title={`${reactions.map((r) => r.username).join(", ")}`}
                 >
-                  <span className="mr-0.5">{emoji}</span>
+                  <span>{emoji}</span>
                   <span className="font-semibold">{reactions.length}</span>
                 </button>
               ))}

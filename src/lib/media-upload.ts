@@ -49,7 +49,13 @@ export type MediaDraft = {
 // Firebase Storage resumable uploads can hang indefinitely on flaky mobile
 // connections. If no bytes move within this window, cancel the task so the
 // promise rejects and the UI can offer a retry instead of spinning forever.
-const STALL_TIMEOUT_MS = 45_000;
+// Timeout is dynamic based on file size: larger files get more time.
+// Base timeout: 2 minutes, plus 1 second per 100KB of file size.
+const getStallTimeoutMs = (fileSize: number): number => {
+  const BASE_TIMEOUT_MS = 120_000; // 2 minutes base
+  const SIZE_TIMEOUT_MS = Math.ceil(fileSize / (100 * 1024)) * 1000; // 1s per 100KB
+  return BASE_TIMEOUT_MS + SIZE_TIMEOUT_MS;
+};
 
 /**
  * Start uploading a file to Firebase Storage under media/{userId}/… and
@@ -70,6 +76,9 @@ export function startMediaUpload(file: File, userId: string): UploadHandle {
   let latestProgress = 0;
   let lastActivityAt = Date.now();
   const listeners = new Set<(progress: number) => void>();
+  
+  // Calculate dynamic stall timeout based on file size
+  const stallTimeoutMs = getStallTimeoutMs(file.size);
 
   const report = (p: number) => {
     latestProgress = p;
@@ -85,6 +94,15 @@ export function startMediaUpload(file: File, userId: string): UploadHandle {
     () => {},
     () => {}
   );
+
+  // Stall timer - declared before promise to avoid temporal dead zone issues
+  const stallTimer = setInterval(() => {
+    if (settled) return;
+    if (Date.now() - lastActivityAt > stallTimeoutMs) {
+      console.warn(`Upload stalled for ${file.name} (${file.size} bytes) after ${stallTimeoutMs}ms - cancelling`);
+      task.cancel(); // rejects the promise → surfaces as a failed upload
+    }
+  }, 5_000);
 
   const promise = new Promise<string>((resolve, reject) => {
     task.then(
@@ -108,13 +126,6 @@ export function startMediaUpload(file: File, userId: string): UploadHandle {
       }
     );
   });
-
-  const stallTimer = setInterval(() => {
-    if (settled) return;
-    if (Date.now() - lastActivityAt > STALL_TIMEOUT_MS) {
-      task.cancel(); // rejects the promise → surfaces as a failed upload
-    }
-  }, 5_000);
 
   return {
     promise,
