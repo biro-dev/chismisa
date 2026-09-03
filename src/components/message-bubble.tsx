@@ -505,7 +505,7 @@ export const MessageBubble = memo(function MessageBubble({
       className={`group msg-bubble animate-bubble-in flex ${
         isOwn ? "justify-end" : "justify-start"
       } ${grouped ? "mt-0.5" : ""} ${
-        groupedReactions.length > 0 ? "pb-3" : ""
+        groupedReactions.length > 0 ? "pb-4" : ""
       }`}
     >
       <div
@@ -700,11 +700,11 @@ export const MessageBubble = memo(function MessageBubble({
             </>
           )}
 
-          {/* Applied reaction badges - positioned below the bubble's bottom corner */}
+          {/* Applied reaction badges - positioned below the bubble */}
           {!msg.deletedAt && groupedReactions.length > 0 && (
             <div
               onPointerDown={(e) => e.stopPropagation()}
-              className={`absolute bottom-[-14px] z-10 flex gap-1 ${
+              className={`absolute bottom-[-12px] z-10 flex gap-1.5 ${
                 isOwn ? "right-2" : "left-2"
               }`}
             >
@@ -715,14 +715,14 @@ export const MessageBubble = memo(function MessageBubble({
                     e.stopPropagation();
                     onReact(msg.id, emoji);
                   }}
-                  className={`flex items-center gap-0.5 rounded-full border px-2 py-1 text-xs shadow-md transition-transform hover:scale-105 ${
+                  className={`flex items-center gap-1 rounded-full border px-2 py-1 text-xs shadow-lg transition-transform hover:scale-105 ${
                     reactions.some((r) => r.userId === userId)
                       ? "border-gossip bg-gossip-deep text-white"
                       : "border-hairline bg-surface-raised text-ink-text"
                   }`}
                   title={`${reactions.map((r) => r.username).join(", ")}`}
                 >
-                  <span>{emoji}</span>
+                  <span className="text-sm">{emoji}</span>
                   <span className="font-semibold">{reactions.length}</span>
                 </button>
               ))}
