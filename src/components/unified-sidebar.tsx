@@ -3,6 +3,7 @@
 import { LogOut, MessageSquare, Plus, Search, Shield, Sun, Moon, Users, X } from "lucide-react";
 import { logoutAction } from "@/lib/actions/auth";
 import { groupColor } from "@/lib/group-color";
+import { formatRelativeTime } from "@/lib/relative-time";
 import type { Theme } from "@/lib/theme";
 import type { SidebarConversation } from "@/lib/types";
 
@@ -101,42 +102,59 @@ export function UnifiedSidebar({
             {conversations.map((conv) => {
               const isSelected = selectedId === conv.id && selectedKind === conv.kind;
               const hasUnread = conv.unreadCount > 0 && !isSelected;
+              // Groups show their last message preview (falling back to the
+              // member count for quiet groups); DMs show the last message.
+              const preview =
+                conv.kind === "group"
+                  ? conv.lastMessage || `${conv.memberCount} member${conv.memberCount === 1 ? "" : "s"}`
+                  : conv.lastMessage || "Tap to start chatting";
               return (
                 <button
                   key={`${conv.kind}-${conv.id}`}
                   onClick={() => onSelectConversation(conv.id, conv.kind)}
-                  className={`relative flex w-full items-center gap-3 rounded-lg px-3 py-2.5 text-left transition-colors ${
+                  className={`relative flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-left transition-colors ${
                     isSelected ? "bg-surface-raised text-ink-text" : "text-ink-text hover:bg-surface/70"
                   }`}
                 >
                   {hasUnread && (
                     <span aria-hidden className="absolute left-0 top-1/2 h-6 w-[3px] -translate-y-1/2 rounded-full bg-gossip" />
                   )}
-                  {conv.kind === "dm" ? (
-                    <div className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-gradient-to-br ${groupColor(conv.name)}`}>
+                  <div className="relative shrink-0">
+                    <div className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-gradient-to-br ${groupColor(conv.name)}`}>
                       <span className="text-sm font-bold text-white">{conv.avatar}</span>
                     </div>
-                  ) : (
-                    <div className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-gradient-to-br ${groupColor(conv.name)}`}>
-                      <span className="text-sm font-bold text-white">{conv.avatar}</span>
-                    </div>
-                  )}
+                    {/* Online presence dot — DMs only, driven by the 60s
+                        presence window computed server-side */}
+                    {conv.kind === "dm" && conv.online && (
+                      <span
+                        aria-label="Online"
+                        className="absolute -bottom-0.5 -right-0.5 h-3 w-3 rounded-full border-2 border-ink bg-emerald-400"
+                      />
+                    )}
+                  </div>
                   <div className="min-w-0 flex-1">
-                    <div className="flex items-center justify-between">
-                      <p className="truncate text-sm font-medium">{conv.name}</p>
-                      {conv.kind === "group" && conv.isOwner && (
-                        <span className="ml-1 shrink-0 rounded bg-surface-raised px-1.5 py-0.5 text-[10px] font-medium text-ink-muted">Owner</span>
+                    <div className="flex items-baseline justify-between gap-2">
+                      <p className="truncate text-sm font-semibold">
+                        {conv.name}
+                        {conv.kind === "group" && conv.isOwner && (
+                          <span className="ml-1.5 shrink-0 rounded bg-surface-raised px-1.5 py-0.5 align-middle text-[10px] font-medium text-ink-muted">Owner</span>
+                        )}
+                      </p>
+                      <span className={`shrink-0 text-[11px] ${hasUnread ? "font-semibold text-gossip" : "text-ink-muted"}`}>
+                        {formatRelativeTime(conv.lastActivity)}
+                      </span>
+                    </div>
+                    <div className="mt-0.5 flex items-center justify-between gap-2">
+                      <p className={`truncate text-xs ${hasUnread ? "font-medium text-ink-text" : "text-ink-muted"}`}>
+                        {preview}
+                      </p>
+                      {hasUnread && (
+                        <span className="flex h-5 min-w-5 shrink-0 items-center justify-center rounded-full bg-gossip px-1.5 text-[10px] font-bold text-white">
+                          {conv.unreadCount > 99 ? "99+" : conv.unreadCount}
+                        </span>
                       )}
                     </div>
-                    <p className="truncate text-xs text-ink-muted">
-                      {conv.kind === "dm" ? (conv.lastMessage || "Tap to start chatting") : `${conv.memberCount} members`}
-                    </p>
                   </div>
-                  {hasUnread && (
-                    <span className="flex h-5 min-w-5 shrink-0 items-center justify-center rounded-full bg-gossip px-1.5 text-[10px] font-bold text-white">
-                      {conv.unreadCount > 99 ? "99+" : conv.unreadCount}
-                    </span>
-                  )}
                 </button>
               );
             })}

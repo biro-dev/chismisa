@@ -15,6 +15,7 @@ import {
   Copy,
   CornerUpLeft,
   Hash,
+  Info,
   LogOut,
   Menu,
   MessageSquare,
@@ -30,6 +31,8 @@ import { SearchModal } from "@/components/search-modal";
 import { DmView } from "@/components/dm-view";
 import { MediaPicker } from "@/components/media-picker";
 import { UnifiedSidebar } from "@/components/unified-sidebar";
+import { ContextPanel } from "@/components/context-panel";
+import { EmojiPopover } from "@/components/emoji-popover";
 import { useDm } from "@/lib/hooks/use-dm";
 import {
   findUserByUsername,
@@ -226,6 +229,8 @@ export function Dashboard({
   const [showJoinModal, setShowJoinModal] = useState(false);
   const [showInviteModal, setShowInviteModal] = useState(false);
   const [showSearchModal, setShowSearchModal] = useState(false);
+  // Collapsible right-hand context panel (media gallery + group details)
+  const [contextOpen, setContextOpen] = useState(false);
 
   // Unified selection handler for both DMs and groups
   const handleSelectConversation = (id: string, kind: "dm" | "group") => {
@@ -239,6 +244,8 @@ export function Dashboard({
       );
       selectGroup(id);
     }
+    // The panel is per-group — close it when switching conversations
+    setContextOpen(false);
     setSidebarOpen(false);
   };
   // Confirmation modal for leaving/deleting a group
@@ -499,6 +506,22 @@ export function Dashboard({
                 : "Chismisa"}
             </h2>
           </div>
+          {/* Context panel toggle (mobile) — groups only */}
+          {selectedGroup && !activeDm && (
+            <button
+              onClick={() => setContextOpen((v) => !v)}
+              aria-label="Toggle group details"
+              aria-expanded={contextOpen}
+              className={`ml-auto rounded-lg p-2 transition-colors ${
+                contextOpen
+                  ? "bg-gossip/15 text-gossip"
+                  : "text-ink-muted hover:bg-surface-raised hover:text-ink-text"
+              }`}
+              title="Group details"
+            >
+              <Info className="h-5 w-5" />
+            </button>
+          )}
         </div>
 
         {activeDm ? (
@@ -526,20 +549,50 @@ export function Dashboard({
                   <h2 className="text-sm font-semibold text-ink-text">
                     {selectedGroup.name}
                   </h2>
-                  <p className="text-xs text-ink-muted">
-                    {selectedGroup.memberCount} members
-                    {onlineCount > 0 && (
-                      <span className="ml-1.5">
-                        ·{" "}
-                        <span className="text-emerald-400">
-                          🟢 {onlineCount} online
+                  {/* Status line — additive Messenger-style header status.
+                      Reuses the existing typing state (the bottom typing
+                      indicator is untouched); otherwise shows presence. */}
+                  {typingUsers.size > 0 ? (
+                    <p className="flex items-center gap-1.5 text-xs text-gossip">
+                      <span
+                        aria-hidden
+                        className="tea-pulse h-2 w-2 shrink-0 rounded-full bg-tea shadow-[0_0_10px_2px_rgba(246,185,59,0.4)]"
+                      />
+                      Spilling Tea…
+                    </p>
+                  ) : (
+                    <p className="text-xs text-ink-muted">
+                      Active
+                      {selectedGroup.memberCount > 0 &&
+                        ` · ${selectedGroup.memberCount} member${
+                          selectedGroup.memberCount === 1 ? "" : "s"
+                        }`}
+                      {onlineCount > 0 && (
+                        <span className="ml-1.5">
+                          ·{" "}
+                          <span className="text-emerald-400">
+                            🟢 {onlineCount} online
+                          </span>
                         </span>
-                      </span>
-                    )}
-                  </p>
+                      )}
+                    </p>
+                  )}
                 </div>
               </div>
               <div className="flex items-center gap-2">
+                <button
+                  onClick={() => setContextOpen((v) => !v)}
+                  aria-label="Toggle group details"
+                  aria-expanded={contextOpen}
+                  className={`rounded-lg p-2 transition-colors ${
+                    contextOpen
+                      ? "bg-gossip/15 text-gossip"
+                      : "text-ink-muted hover:bg-surface-raised hover:text-ink-text"
+                  }`}
+                  title="Group details"
+                >
+                  <Info className="h-4 w-4" />
+                </button>
                 <button
                   onClick={() => setShowSearchModal(true)}
                   aria-label="Search messages"
@@ -633,12 +686,26 @@ export function Dashboard({
                       i > 0 ? messages[i - 1] : null,
                       msg
                     );
+                    // Messenger-style clustering: consecutive messages from
+                    // the same sender (no time divider between them) render
+                    // without a repeated name label and with squared tail.
+                    const prev = i > 0 ? messages[i - 1] : null;
+                    const grouped =
+                      !!prev &&
+                      !divider &&
+                      prev.userId === msg.userId &&
+                      !msg.replyTo &&
+                      !msg.mediaUrl &&
+                      new Date(msg.createdAt).getTime() -
+                        new Date(prev.createdAt).getTime() <
+                        5 * 60_000;
                     return (
                       <div key={msg.id}>
                         {divider && <TimeDivider label={divider} />}
                         <MessageBubble
                           msg={msg}
                           isOwn={msg.userId === userId}
+                          grouped={grouped}
                           userId={userId}
                           onReply={handleReply}
                           onReact={handleReact}
@@ -741,9 +808,10 @@ export function Dashboard({
                   handleSendMessage(e);
                 }
               }}
-              className="safe-bottom shrink-0 border-t border-hairline p-3 sm:p-4"
+              className="safe-bottom shrink-0 px-3 pb-3 pt-2 sm:px-4 sm:pb-4"
             >
-              <div className="flex items-center gap-2">
+              {/* Floating Messenger-style composer pill */}
+              <div className="flex items-center gap-1 rounded-[24px] border border-hairline bg-surface-raised p-1.5 shadow-lg shadow-black/20">
                 <MediaPicker
                   userId={userId}
                   draft={pendingMedia}
@@ -753,16 +821,19 @@ export function Dashboard({
                   type="text"
                   value={messageInput}
                   onChange={(e) => handleInputChange(e.target.value)}
-                  placeholder={pendingMedia ? "Add a caption…" : `Message #${selectedGroup.name}…`}
+                  placeholder={pendingMedia ? "Add a caption…" : `Message ${selectedGroup.name}…`}
                   maxLength={2000}
                   aria-label="Message input"
-                  className="min-w-0 flex-1 rounded-xl border border-hairline bg-surface-raised px-4 py-2.5 text-sm text-ink-text placeholder:text-ink-muted outline-none transition-colors focus:border-gossip focus:ring-2 focus:ring-gossip/20"
+                  className="min-w-0 flex-1 rounded-full bg-transparent px-3 py-2 text-sm text-ink-text placeholder:text-ink-muted outline-none"
+                />
+                <EmojiPopover
+                  onInsert={(emoji) => setMessageInput((prev) => prev + emoji)}
                 />
                 <button
                   type="submit"
                   disabled={!messageInput.trim() && !pendingMedia}
                   aria-label="Send message"
-                  className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-gossip-deep text-white transition-all hover:bg-gossip disabled:cursor-not-allowed disabled:opacity-40"
+                  className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-gossip-deep text-white transition-all hover:bg-gossip disabled:cursor-not-allowed disabled:opacity-40"
                 >
                   <Send className="h-4 w-4" />
                 </button>
@@ -798,6 +869,40 @@ export function Dashboard({
           </div>
         )}
       </main>
+
+      {/* Collapsible context panel — right-hand drawer for the active group.
+          Reuses the existing invite/leave/delete confirm flows. */}
+      {selectedGroup && !activeDm && (
+        <ContextPanel
+          key={selectedGroup.id}
+          open={contextOpen}
+          onClose={() => setContextOpen(false)}
+          group={selectedGroup}
+          onInvite={
+            selectedGroup.isOwner ? () => setShowInviteModal(true) : undefined
+          }
+          onLeave={
+            selectedGroup.isOwner
+              ? undefined
+              : () =>
+                  setConfirmModal({
+                    type: "leave",
+                    groupId: selectedGroup.id,
+                    name: selectedGroup.name,
+                  })
+          }
+          onDelete={
+            selectedGroup.isOwner
+              ? () =>
+                  setConfirmModal({
+                    type: "delete",
+                    groupId: selectedGroup.id,
+                    name: selectedGroup.name,
+                  })
+              : undefined
+          }
+        />
+      )}
 
       {/* Create Group Modal */}
       {showCreateModal && (

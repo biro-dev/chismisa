@@ -286,7 +286,9 @@ export async function getUnifiedConversations(): Promise<SidebarConversation[]> 
         createdAt: true,
         members: {
           where: { userId: { not: session.userId } },
-          select: { user: { select: { id: true, username: true } } },
+          select: {
+            user: { select: { id: true, username: true, lastActiveAt: true } },
+          },
           take: 1,
         },
         messages: {
@@ -373,6 +375,11 @@ export async function getUnifiedConversations(): Promise<SidebarConversation[]> 
           lastMessage: lastMsg?.content ?? null,
           lastActivity: lastMsg?.createdAt.toISOString() ?? c.createdAt.toISOString(),
           unreadCount: dmUnreadCounts.get(c.id) ?? 0,
+          // Presence dot: the other user pinged within the last minute
+          // (same "active in the last 60s" window the presence ping uses).
+          online: other.lastActiveAt
+            ? Date.now() - other.lastActiveAt.getTime() < 60_000
+            : false,
         };
       });
 

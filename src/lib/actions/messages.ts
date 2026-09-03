@@ -553,3 +553,69 @@ export async function getMessages(groupId: string) {
     mediaDuration: m.mediaDuration,
   }));
 }
+
+// ─── Group media gallery (context panel) ─────────────────────────────────────
+
+export type GroupMediaItem = {
+  id: string;
+  url: string;
+  type: "image" | "video" | "voice";
+  thumb: string | null;
+  createdAt: string;
+  username: string;
+};
+
+/**
+ * Recent media attachments shared in a group, newest first. Read-only helper
+ * for the collapsible context panel's Media tab — only group members can call
+ * it, and deleted messages are excluded.
+ */
+export async function getGroupMedia(
+  groupId: string,
+  limit = 60
+): Promise<GroupMediaItem[]> {
+  const session = await getSession();
+  if (!session) return [];
+
+  try {
+    // Membership check — same pattern as the other group actions.
+    const member = await db.groupMember.findUnique({
+      where: {
+        userId_groupId: { userId: session.userId, groupId },
+      },
+      select: { id: true },
+    });
+    if (!member) return [];
+
+    const media = await db.message.findMany({
+      where: {
+        groupId,
+        deletedAt: null,
+        mediaUrl: { not: null },
+        mediaType: { not: null },
+      },
+      orderBy: { createdAt: "desc" },
+      take: limit,
+      select: {
+        id: true,
+        mediaUrl: true,
+        mediaType: true,
+        mediaThumb: true,
+        createdAt: true,
+        user: { select: { username: true } },
+      },
+    });
+
+    return media.map((m) => ({
+      id: m.id,
+      url: m.mediaUrl!,
+      type: m.mediaType as "image" | "video" | "voice",
+      thumb: m.mediaThumb,
+      createdAt: m.createdAt.toISOString(),
+      username: m.user.username,
+    }));
+  } catch (err) {
+    console.error("Get group media error:", err);
+    return [];
+  }
+}

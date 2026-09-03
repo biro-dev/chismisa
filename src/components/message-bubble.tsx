@@ -76,6 +76,12 @@ type MessageBubbleProps = {
   onEdit: (messageId: string, content: string) => Promise<{ error?: string }>;
   /** Retries a media upload that failed (own optimistic bubbles only). */
   onMediaRetry?: (messageId: string) => void;
+  /**
+   * Messenger-style clustering: this message directly follows another from
+   * the same sender, so the name label is hidden and the tail corner is
+   * squared off. Defaults to false (standalone bubble).
+   */
+  grouped?: boolean;
 };
 const messageBubbleAreEqual = (
   prev: MessageBubbleProps,
@@ -96,6 +102,7 @@ const messageBubbleAreEqual = (
   if (prev.msg.mediaStatus !== next.msg.mediaStatus) return false;
   if (prev.msg.mediaProgress !== next.msg.mediaProgress) return false;
   if (prev.onMediaRetry !== next.onMediaRetry) return false;
+  if (prev.grouped !== next.grouped) return false;
   if (!areReactionsEqual(prev.msg.reactions || [], next.msg.reactions || []))
     return false;
   return true;
@@ -111,6 +118,7 @@ export const MessageBubble = memo(function MessageBubble({
   onDelete,
   onEdit,
   onMediaRetry,
+  grouped = false,
 }: MessageBubbleProps) {
   const [overlayOpen, setOverlayOpen] = useState(false);
   const [highlightedEmoji, setHighlightedEmoji] = useState<string | null>(null);
@@ -496,20 +504,25 @@ export const MessageBubble = memo(function MessageBubble({
       data-message-id={msg.id}
       className={`group msg-bubble animate-bubble-in flex ${
         isOwn ? "justify-end" : "justify-start"
-      } ${groupedReactions.length > 0 ? "pb-3" : ""}`}
+      } ${grouped ? "mt-0.5" : ""} ${
+        groupedReactions.length > 0 ? "pb-3" : ""
+      }`}
     >
       <div
         className={`w-fit min-w-0 max-w-[85%] sm:max-w-[70%] ${
           isOwn ? "items-end" : "items-start"
         }`}
       >
-        <p
-          className={`mb-1 text-xs font-medium ${
-            isOwn ? "text-right text-gossip" : "text-ink-muted"
-          }`}
-        >
-          {isOwn ? "You" : msg.username}
-        </p>
+        {/* Sender name — hidden for clustered (grouped) messages, Messenger-style */}
+        {!grouped && (
+          <p
+            className={`mb-1 text-xs font-medium ${
+              isOwn ? "text-right text-gossip" : "text-ink-muted"
+            }`}
+          >
+            {isOwn ? "You" : msg.username}
+          </p>
+        )}
         <div
           ref={bubbleRef}
           onPointerDown={handlePointerDown}
@@ -522,8 +535,12 @@ export const MessageBubble = memo(function MessageBubble({
             msg.deletedAt
               ? "border border-dashed border-hairline italic text-ink-muted"
               : isOwn
-              ? "rounded-br-[6px] bg-gossip-deep text-white"
-              : "rounded-bl-[6px] bg-surface text-ink-text"
+              ? `bg-gossip-deep text-white ${
+                  grouped ? "rounded-br-[18px]" : "rounded-br-[6px]"
+                }`
+              : `bg-surface text-ink-text ${
+                  grouped ? "rounded-bl-[18px]" : "rounded-bl-[6px]"
+                }`
           }`}
           style={{
             transform: `translateX(${swipeX}px)`,
