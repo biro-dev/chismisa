@@ -48,6 +48,10 @@ export type Message = {
   mediaThumb?: string | null;
   mediaSize?: number | null;
   mediaDuration?: number | null;
+  // Client-only optimistic upload state (never persisted server-side):
+  // "uploading" shows a progress ring on the bubble, "failed" a retry affordance.
+  mediaStatus?: "uploading" | "failed" | null;
+  mediaProgress?: number | null;
 };
 
 export type DashboardProps = {

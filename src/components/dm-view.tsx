@@ -39,6 +39,7 @@ export function DmView({
     handleDeleteMessage,
     handleEditMessage,
     sendDmMediaMessage,
+    handleMediaRetry,
     pendingDmMedia,
     setPendingDmMedia,
   } = dm;
@@ -143,6 +144,7 @@ export function DmView({
                     onReact={handleReact}
                     onDelete={handleDeleteMessage}
                     onEdit={handleEditMessage}
+                    onMediaRetry={handleMediaRetry}
                   />
                 </div>
               );
@@ -187,9 +189,8 @@ export function DmView({
       <div className="safe-bottom flex shrink-0 items-end gap-2 border-t border-hairline p-3">
         <MediaPicker
           userId={userId}
-          onPendingMediaChange={(media) => {
-            setPendingDmMedia(media);
-          }}
+          draft={pendingDmMedia}
+          onDraftChange={setPendingDmMedia}
         />
         <textarea
           ref={inputRef}

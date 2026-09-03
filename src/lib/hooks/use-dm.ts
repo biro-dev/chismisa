@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { DirectMessage } from "@/lib/types";
+import { startMediaUpload, type MediaDraft } from "@/lib/media-upload";
 import {
   deleteDirectMessageAction,
   editDirectMessageAction,
@@ -14,6 +15,22 @@ import {
   subscribeToDm,
   unsubscribeFromDm,
 } from "@/lib/realtime";
+
+/**
+ * Everything needed to re-send a media message whose upload failed — keyed by
+ * optimistic message id and powering the "Tap to retry" bubble affordance.
+ */
+type DmMediaRetryEntry = {
+  file: File;
+  mediaType: "image" | "video" | "voice";
+  mediaSize: number;
+  mediaDuration: number | null;
+  localUrl: string;
+  /** Set when the upload succeeded but the server send failed (skip re-upload). */
+  uploadedUrl?: string;
+  content: string;
+  replyToId: string | null;
+};
 
 /**
  * All direct-message state for the active conversation: message loading,
@@ -180,21 +197,23 @@ export function useDm({
     });
   }, [applyIncomingMessage, onConversationActivity]);
 
-  // Send a message — optimistic add, replaced by the confirmed version
-  const sendMessageDmCore = async (
+  // Media messages whose upload failed, keyed by optimistic message id —
+  // powers "Tap to retry" on the bubble.
+  const mediaRetriesRef = useRef<Map<string, DmMediaRetryEntry>>(new Map());
+
+  // Send a message — optimistic add, replaced by the confirmed version.
+  // With a media draft the bubble appears instantly (local blob URL) with a
+  // progress ring while the background upload finishes; the server send only
+  // happens once the final download URL is available.
+  const sendMessageDmCore = useCallback(async (
     content: string,
     replyToId: string | null,
-    media: {
-      mediaUrl: string;
-      mediaType: "image" | "video" | "voice";
-      mediaThumb?: string | null;
-      mediaSize?: number | null;
-      mediaDuration?: number | null;
-    } | null
+    draft: MediaDraft | null
   ) => {
     const id = conversationIdRef.current;
     if (!id) return;
 
+    const uploading = draft !== null && !draft.handle.isSettled();
     const optimistic: DirectMessage = {
       id: `temp-${Date.now()}`,
       content,
@@ -211,19 +230,66 @@ export function useDm({
           }
         : null,
       reactions: [],
-      ...(media ? {
-        mediaUrl: media.mediaUrl,
-        mediaType: media.mediaType,
-        mediaThumb: media.mediaThumb ?? null,
-        mediaSize: media.mediaSize ?? null,
-        mediaDuration: media.mediaDuration ?? null,
+      ...(draft ? {
+        mediaUrl: draft.localUrl,
+        mediaType: draft.mediaType,
+        mediaThumb: null,
+        mediaSize: draft.mediaSize,
+        mediaDuration: draft.mediaDuration,
+        ...(uploading ? { mediaStatus: "uploading" as const, mediaProgress: draft.handle.getProgress() } : {}),
       } : {}),
     };
     setMessages((prev) => [...prev, optimistic]);
     setReplyTo(null);
 
+    // "upload" until we hold the final URL, then "send" for the server call —
+    // failures in the upload stage keep the bubble alive with a retry.
+    let stage: "upload" | "send" = draft ? "upload" : "send";
+
     try {
-      const result = await sendDirectMessageAction(id, content, replyToId, media ?? undefined);
+      let mediaPayload:
+        | {
+            mediaUrl: string;
+            mediaType: "image" | "video" | "voice";
+            mediaThumb: string | null;
+            mediaSize: number | null;
+            mediaDuration: number | null;
+          }
+        | undefined;
+
+      if (draft) {
+        // Await the background upload (usually already finished by now)
+        const unsubscribe = draft.handle.onProgress((p) => {
+          setMessages((prev) =>
+            prev.map((m) => (m.id === optimistic.id ? { ...m, mediaProgress: p } : m))
+          );
+        });
+        let url: string;
+        try {
+          url = await draft.handle.promise;
+        } finally {
+          unsubscribe();
+        }
+        stage = "send";
+        URL.revokeObjectURL(draft.localUrl);
+        mediaPayload = {
+          mediaUrl: url,
+          mediaType: draft.mediaType,
+          mediaThumb: null,
+          mediaSize: draft.mediaSize,
+          mediaDuration: draft.mediaDuration,
+        };
+        // Swap the bubble from the local blob URL to the final download URL
+        setMessages((prev) =>
+          prev.map((m) =>
+            m.id === optimistic.id
+              ? { ...m, mediaUrl: url, mediaStatus: null, mediaProgress: null }
+              : m
+          )
+        );
+      }
+
+      const result = await sendDirectMessageAction(id, content, replyToId, mediaPayload);
       if (result.error) {
         setActionError(result.error);
         setMessages((prev) => prev.filter((m) => m.id !== optimistic.id));
@@ -238,20 +304,34 @@ export function useDm({
       }
       onConversationActivity?.();
     } catch {
-      setActionError("Failed to send message.");
-      setMessages((prev) => prev.filter((m) => m.id !== optimistic.id));
-      setMessageInput(content);
+      if (stage === "upload") {
+        // Upload failed — keep the bubble (it still previews via the local
+        // blob URL) and offer a retry instead of dropping the message.
+        setMessages((prev) =>
+          prev.map((m) =>
+            m.id === optimistic.id ? { ...m, mediaStatus: "failed", mediaProgress: null } : m
+          )
+        );
+        mediaRetriesRef.current.set(optimistic.id, {
+          file: draft!.file,
+          mediaType: draft!.mediaType,
+          mediaSize: draft!.mediaSize,
+          mediaDuration: draft!.mediaDuration,
+          localUrl: draft!.localUrl,
+          content,
+          replyToId,
+        });
+      } else {
+        setActionError("Failed to send message.");
+        setMessages((prev) => prev.filter((m) => m.id !== optimistic.id));
+        setMessageInput(content);
+      }
     }
-  };
+  }, [userId, replyTo, onConversationActivity]);
 
-  // Store pending media (set by composer when a file is selected, cleared after send)
-  const [pendingDmMedia, setPendingDmMedia] = useState<{
-    mediaUrl: string;
-    mediaType: "image" | "video" | "voice";
-    mediaThumb?: string | null;
-    mediaSize?: number | null;
-    mediaDuration?: number | null;
-  } | null>(null);
+  // Pending media draft — set by the composer as soon as a file is picked
+  // (its upload runs in the background) and cleared on send or discard.
+  const [pendingDmMedia, setPendingDmMedia] = useState<MediaDraft | null>(null);
 
   const handleSendMessage = useCallback(async () => {
     const content = messageInput.trim();
@@ -262,22 +342,90 @@ export function useDm({
     setPendingDmMedia(null);
 
     await sendMessageDmCore(content, replyTo?.id ?? null, media);
-  }, [messageInput, userId, replyTo, onConversationActivity, pendingDmMedia, sendMessageDmCore]);
+  }, [messageInput, replyTo, pendingDmMedia, sendMessageDmCore]);
 
-  // Send a media message (called from the composer after upload completes)
+  // Send a media message — the composer hands over the draft; the send path
+  // awaits its background upload and then persists the message.
   const sendDmMediaMessage = useCallback(
-    async (media: {
-      mediaUrl: string;
-      mediaType: "image" | "video" | "voice";
-      mediaThumb?: string | null;
-      mediaSize?: number | null;
-      mediaDuration?: number | null;
-    }, caption?: string) => {
+    async (draft: MediaDraft, caption?: string) => {
       const content = caption?.trim() || "";
       setPendingDmMedia(null);
-      await sendMessageDmCore(content, replyTo?.id ?? null, media);
+      await sendMessageDmCore(content, replyTo?.id ?? null, draft);
     },
     [replyTo, sendMessageDmCore]
+  );
+
+  // Retry a media message whose upload failed ("Tap to retry" on the bubble).
+  const handleMediaRetry = useCallback(
+    async (messageId: string) => {
+      const entry = mediaRetriesRef.current.get(messageId);
+      const id = conversationIdRef.current;
+      if (!entry || !id) return;
+      mediaRetriesRef.current.delete(messageId);
+      setMessages((prev) =>
+        prev.map((m) =>
+          m.id === messageId ? { ...m, mediaStatus: "uploading" as const, mediaProgress: 0 } : m
+        )
+      );
+      try {
+        let url: string;
+        if (entry.uploadedUrl) {
+          // Upload already succeeded previously — go straight to the server send.
+          url = entry.uploadedUrl;
+        } else {
+          const handle = startMediaUpload(entry.file, userId);
+          const unsubscribe = handle.onProgress((p) => {
+            setMessages((prev) =>
+              prev.map((m) => (m.id === messageId ? { ...m, mediaProgress: p } : m))
+            );
+          });
+          try {
+            url = await handle.promise;
+          } finally {
+            unsubscribe();
+          }
+          URL.revokeObjectURL(entry.localUrl);
+        }
+        setMessages((prev) =>
+          prev.map((m) =>
+            m.id === messageId ? { ...m, mediaUrl: url, mediaStatus: null, mediaProgress: null } : m
+          )
+        );
+
+        const result = await sendDirectMessageAction(id, entry.content, entry.replyToId, {
+          mediaUrl: url,
+          mediaType: entry.mediaType,
+          mediaThumb: null,
+          mediaSize: entry.mediaSize,
+          mediaDuration: entry.mediaDuration,
+        });
+        if (result.error) {
+          // Upload succeeded but the server refused — remember the URL so a
+          // retry doesn't re-upload the file.
+          mediaRetriesRef.current.set(messageId, { ...entry, uploadedUrl: url });
+          setMessages((prev) =>
+            prev.map((m) => (m.id === messageId ? { ...m, mediaStatus: "failed" as const } : m))
+          );
+          setActionError(result.error);
+          return;
+        }
+        if (result.message) {
+          setMessages((prev) =>
+            prev.map((m) => (m.id === messageId ? result.message! : m))
+          );
+          lastMessageTimeRef.current = result.message.createdAt;
+        }
+        onConversationActivity?.();
+      } catch {
+        mediaRetriesRef.current.set(messageId, entry);
+        setMessages((prev) =>
+          prev.map((m) =>
+            m.id === messageId ? { ...m, mediaStatus: "failed" as const, mediaProgress: null } : m
+          )
+        );
+      }
+    },
+    [userId, onConversationActivity]
   );
 
   // Toggle a reaction (optimistic; server broadcast reconciles others)
@@ -361,6 +509,7 @@ export function useDm({
     handleDeleteMessage,
     handleEditMessage,
     sendDmMediaMessage,
+    handleMediaRetry,
     pendingDmMedia,
     setPendingDmMedia,
   };

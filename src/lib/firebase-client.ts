@@ -1,14 +1,7 @@
 "use client";
 
 import { initializeApp, getApps, type FirebaseApp } from "firebase/app";
-import {
-  getStorage,
-  ref,
-  uploadBytesResumable,
-  getDownloadURL,
-  type StorageReference,
-  type UploadTask,
-} from "firebase/storage";
+import { getStorage } from "firebase/storage";
 
 // Firebase client configuration — same project as push notifications
 const firebaseConfig = {
@@ -35,48 +28,6 @@ function getFirebaseApp(): FirebaseApp {
 
 export function getFirebaseStorage() {
   return getStorage(getFirebaseApp());
-}
-
-/**
- * Upload a media file to Firebase Storage.
- * Path: media/{userId}/{timestamp}_{random}/{filename}
- * Returns the download URL.
- */
-export async function uploadMedia(
-  file: File,
-  userId: string,
-  onProgress?: (progress: number) => void
-): Promise<{ url: string; path: string }> {
-  const storage = getFirebaseStorage();
-  const timestamp = Date.now();
-  const random = Math.random().toString(36).slice(2, 8);
-  const path = `media/${userId}/${timestamp}_${random}/${file.name}`;
-  const storageRef: StorageReference = ref(storage, path);
-
-  return new Promise((resolve, reject) => {
-    const task: UploadTask = uploadBytesResumable(storageRef, file, {
-      contentType: file.type,
-    });
-
-    task.on(
-      "state_changed",
-      (snapshot) => {
-        if (onProgress) {
-          const progress = (snapshot.bytesTransferred / snapshot.totalBytes) * 100;
-          onProgress(progress);
-        }
-      },
-      (error) => reject(error),
-      async () => {
-        try {
-          const url = await getDownloadURL(task.snapshot.ref);
-          resolve({ url, path });
-        } catch (err) {
-          reject(err);
-        }
-      }
-    );
-  });
 }
 
 /**

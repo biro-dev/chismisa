@@ -2,7 +2,7 @@
 
 import { memo, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
-import { CornerUpLeft, Pencil, Plus, Search, Smile, Trash2, X } from "lucide-react";
+import { CornerUpLeft, Pencil, Plus, RefreshCw, Search, Smile, Trash2, X } from "lucide-react";
 import { Capacitor } from "@capacitor/core";
 import { Haptics, ImpactStyle } from "@capacitor/haptics";
 import type { Message, MessageReaction } from "@/lib/types";
@@ -12,6 +12,37 @@ function triggerHaptic(style: ImpactStyle) {
   if (Capacitor.isPluginAvailable("Haptics")) {
     Haptics.impact({ style }).catch(() => {});
   }
+}
+
+// Circular upload progress — Messenger-style ring shown over media bubbles
+// while the attachment is still uploading.
+function UploadProgressRing({ progress }: { progress: number }) {
+  const radius = 16;
+  const circumference = 2 * Math.PI * radius;
+  const clamped = Math.min(100, Math.max(0, progress));
+  const offset = circumference * (1 - clamped / 100);
+  return (
+    <div className="relative flex h-10 w-10 items-center justify-center">
+      <svg viewBox="0 0 40 40" className="h-10 w-10 -rotate-90" aria-hidden>
+        <circle cx="20" cy="20" r={radius} fill="none" stroke="rgba(255,255,255,0.25)" strokeWidth="3" />
+        <circle
+          cx="20"
+          cy="20"
+          r={radius}
+          fill="none"
+          stroke="white"
+          strokeWidth="3"
+          strokeLinecap="round"
+          strokeDasharray={circumference}
+          strokeDashoffset={offset}
+          className="transition-[stroke-dashoffset] duration-200"
+        />
+      </svg>
+      <span className="absolute text-[9px] font-semibold text-white">
+        {Math.round(clamped)}%
+      </span>
+    </div>
+  );
 }
 
 // Messenger-style default reactions (left to right)
@@ -43,6 +74,8 @@ type MessageBubbleProps = {
   onReact: (messageId: string, emoji: string) => void;
   onDelete: (messageId: string) => void;
   onEdit: (messageId: string, content: string) => Promise<{ error?: string }>;
+  /** Retries a media upload that failed (own optimistic bubbles only). */
+  onMediaRetry?: (messageId: string) => void;
 };
 const messageBubbleAreEqual = (
   prev: MessageBubbleProps,
@@ -58,6 +91,11 @@ const messageBubbleAreEqual = (
   if (prev.msg.replyTo?.id !== next.msg.replyTo?.id) return false;
   if (prev.msg.replyTo?.content !== next.msg.replyTo?.content) return false;
   if (prev.msg.replyTo?.username !== next.msg.replyTo?.username) return false;
+  // Media fields — the optimistic upload flow mutates these on the fly
+  if (prev.msg.mediaUrl !== next.msg.mediaUrl) return false;
+  if (prev.msg.mediaStatus !== next.msg.mediaStatus) return false;
+  if (prev.msg.mediaProgress !== next.msg.mediaProgress) return false;
+  if (prev.onMediaRetry !== next.onMediaRetry) return false;
   if (!areReactionsEqual(prev.msg.reactions || [], next.msg.reactions || []))
     return false;
   return true;
@@ -72,6 +110,7 @@ export const MessageBubble = memo(function MessageBubble({
   onReact,
   onDelete,
   onEdit,
+  onMediaRetry,
 }: MessageBubbleProps) {
   const [overlayOpen, setOverlayOpen] = useState(false);
   const [highlightedEmoji, setHighlightedEmoji] = useState<string | null>(null);
@@ -108,13 +147,14 @@ export const MessageBubble = memo(function MessageBubble({
     return searchEmojis(emojiSearchQuery);
   }, [emojiSearchQuery]);
 
-  // Reset search when closing picker
-  useEffect(() => {
-    if (!emojiPickerOpen) {
-      setEmojiSearchQuery("");
-      setActiveEmojiCategory(0);
-    }
-  }, [emojiPickerOpen]);
+  // Close the emoji picker and reset its transient search/category state.
+  // Done at the call sites (event handlers) rather than in an effect to avoid
+  // cascading setState-in-effect renders.
+  const closeEmojiPicker = useCallback(() => {
+    setEmojiPickerOpen(false);
+    setEmojiSearchQuery("");
+    setActiveEmojiCategory(0);
+  }, []);
 
   // Group reactions by emoji - memoized so it only recomputes when reactions change
   const groupedReactions = useMemo(() => {
@@ -403,12 +443,12 @@ export const MessageBubble = memo(function MessageBubble({
   const handleSelectEmoji = useCallback(
     (emoji: string) => {
       onReact(msg.id, emoji);
-      setEmojiPickerOpen(false);
+      closeEmojiPicker();
       setOverlayOpen(false);
       setHighlightedEmoji(null);
       highlightedEmojiRef.current = null;
     },
-    [msg.id, onReact]
+    [msg.id, onReact, closeEmojiPicker]
   );
 
   const commitReaction = useCallback(
@@ -428,12 +468,12 @@ export const MessageBubble = memo(function MessageBubble({
     const onKey = (e: KeyboardEvent) => {
       if (e.key === "Escape") {
         setOverlayOpen(false);
-        setEmojiPickerOpen(false);
+        closeEmojiPicker();
       }
     };
     document.addEventListener("keydown", onKey);
     return () => document.removeEventListener("keydown", onKey);
-  }, [overlayOpen, emojiPickerOpen]);
+  }, [overlayOpen, emojiPickerOpen, closeEmojiPicker]);
 
   // Click outside the emoji picker closes it
   useEffect(() => {
@@ -442,7 +482,7 @@ export const MessageBubble = memo(function MessageBubble({
         emojiPickerRef.current &&
         !emojiPickerRef.current.contains(event.target as Node)
       ) {
-        setEmojiPickerOpen(false);
+        closeEmojiPicker();
       }
     }
     if (emojiPickerOpen) {
@@ -450,7 +490,7 @@ export const MessageBubble = memo(function MessageBubble({
       return () =>
         document.removeEventListener("mousedown", handleClickOutside);
     }
-  }, [emojiPickerOpen]);
+  }, [emojiPickerOpen, closeEmojiPicker]);
   return (
     <div
       data-message-id={msg.id}
@@ -550,11 +590,13 @@ export const MessageBubble = memo(function MessageBubble({
             <>
               {/* Media attachment */}
               {msg.mediaUrl && msg.mediaType && (
-                <div className="mb-2">
+                <div className="relative mb-2">
                   {msg.mediaType === "image" && (
                     <img
                       src={msg.mediaUrl}
-                      alt="Shared image"
+                      alt={`Image shared by ${msg.username}`}
+                      loading="lazy"
+                      decoding="async"
                       className="max-h-60 max-w-full cursor-pointer rounded-xl object-contain"
                       onClick={() => {
                         // Open fullscreen lightbox
@@ -567,8 +609,9 @@ export const MessageBubble = memo(function MessageBubble({
                       src={msg.mediaUrl}
                       poster={msg.mediaThumb ?? undefined}
                       controls
-                      className="max-h-60 max-w-full rounded-xl"
                       preload="metadata"
+                      aria-label={`Video shared by ${msg.username}`}
+                      className="max-h-60 max-w-full rounded-xl"
                     />
                   )}
                   {msg.mediaType === "voice" && (
@@ -599,6 +642,27 @@ export const MessageBubble = memo(function MessageBubble({
                       </div>
                     </div>
                   )}
+                {/* Uploading overlay — Messenger-style progress ring */}
+                {msg.mediaStatus === "uploading" && (
+                  <div className="absolute inset-0 z-10 flex items-center justify-center rounded-xl bg-black/50">
+                    <UploadProgressRing progress={msg.mediaProgress ?? 0} />
+                  </div>
+                )}
+                {/* Failed upload — tap the bubble to retry */}
+                {msg.mediaStatus === "failed" && isOwn && (
+                  <button
+                    type="button"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      onMediaRetry?.(msg.id);
+                    }}
+                    className="absolute inset-0 z-10 flex flex-col items-center justify-center gap-1 rounded-xl bg-black/60 text-white transition-colors hover:bg-black/70"
+                    title="Tap to retry"
+                  >
+                    <RefreshCw className="h-6 w-6" />
+                    <span className="text-xs font-medium">Tap to retry</span>
+                  </button>
+                )}
                 </div>
               )}
               {/* Text content */}
@@ -701,6 +765,7 @@ export const MessageBubble = memo(function MessageBubble({
                                     {/* React option - opens full emoji picker */}
                   <button
                     title="React"
+                    aria-label="Open emoji picker"
                     onClick={(e) => {
                       e.stopPropagation();
                       setEmojiPickerOpen(true);
@@ -712,6 +777,7 @@ export const MessageBubble = memo(function MessageBubble({
                                     {!isOwn && (
                     <button
                       title="Reply"
+                      aria-label="Reply to this message"
                       onClick={(e) => {
                         e.stopPropagation();
                         onReply(msg);
@@ -726,6 +792,7 @@ export const MessageBubble = memo(function MessageBubble({
                     <>
                       <button
                         title="Reply"
+                        aria-label="Reply to this message"
                         onClick={(e) => {
                           e.stopPropagation();
                           onReply(msg);
@@ -737,6 +804,7 @@ export const MessageBubble = memo(function MessageBubble({
                       </button>
                       <button
                         title="Edit"
+                        aria-label="Edit this message"
                         onClick={(e) => {
                           e.stopPropagation();
                           startEditing();
@@ -747,6 +815,7 @@ export const MessageBubble = memo(function MessageBubble({
                       </button>
                       <button
                         title="Delete message"
+                        aria-label="Delete this message"
                         onClick={(e) => {
                           e.stopPropagation();
                           onDelete(msg.id);
@@ -816,7 +885,7 @@ export const MessageBubble = memo(function MessageBubble({
                   <div className="flex items-center justify-between border-b border-zinc-700 px-4 py-3">
                     <h3 className="font-semibold text-ink-text">React with emoji</h3>
                     <button
-                      onClick={() => setEmojiPickerOpen(false)}
+                      onClick={closeEmojiPicker}
                       className="rounded-lg p-1 text-ink-muted hover:bg-white/10 hover:text-ink-text"
                     >
                       <X className="h-5 w-5" />

@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useRef, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import type { Group, GroupDetails, Message } from "@/lib/types";
+import { startMediaUpload, type MediaDraft } from "@/lib/media-upload";
 import {
   deleteMessageAction,
   editMessageAction,
@@ -26,6 +27,22 @@ type UseChatParams = {
   initialMessages: Message[];
   userId: string;
   username: string;
+};
+
+/**
+ * Everything needed to re-send a media message whose upload failed — keyed by
+ * optimistic message id and powering the "Tap to retry" bubble affordance.
+ */
+type MediaRetryEntry = {
+  file: File;
+  mediaType: "image" | "video" | "voice";
+  mediaSize: number;
+  mediaDuration: number | null;
+  localUrl: string;
+  /** Set when the upload succeeded but the server send failed (skip re-upload). */
+  uploadedUrl?: string;
+  content: string;
+  replyToId: string | null;
 };
 
 /**
@@ -502,19 +519,21 @@ export function useChat({
     [selectedGroup]
   );
 
-  // Optimistic message sending — append locally, reconcile with server
-  const sendMessageCore = async (
+  // Files for media messages whose upload failed, keyed by optimistic message
+  // id — powers "Tap to retry" on the bubble.
+  const mediaRetriesRef = useRef<Map<string, MediaRetryEntry>>(new Map());
+
+  // Optimistic message sending — append locally, reconcile with server.
+  // With a media draft the bubble appears instantly (local blob URL) with a
+  // progress ring while the background upload finishes; the server send only
+  // happens once the final download URL is available.
+  const sendMessageCore = useCallback(async (
     content: string,
     replyToMsg: Message | null,
-    media: {
-      mediaUrl: string;
-      mediaType: "image" | "video" | "voice";
-      mediaThumb?: string | null;
-      mediaSize?: number | null;
-      mediaDuration?: number | null;
-    } | null
+    draft: MediaDraft | null
   ) => {
     const optimisticId = `temp-${Date.now()}-${Math.random().toString(36).slice(2)}`;
+    const uploading = draft !== null && !draft.handle.isSettled();
     const optimisticMsg: Message = {
       id: optimisticId,
       content,
@@ -529,12 +548,13 @@ export function useChat({
           }
         : null,
       reactions: [],
-      ...(media ? {
-        mediaUrl: media.mediaUrl,
-        mediaType: media.mediaType,
-        mediaThumb: media.mediaThumb ?? null,
-        mediaSize: media.mediaSize ?? null,
-        mediaDuration: media.mediaDuration ?? null,
+      ...(draft ? {
+        mediaUrl: draft.localUrl,
+        mediaType: draft.mediaType,
+        mediaThumb: null,
+        mediaSize: draft.mediaSize,
+        mediaDuration: draft.mediaDuration,
+        ...(uploading ? { mediaStatus: "uploading" as const, mediaProgress: draft.handle.getProgress() } : {}),
       } : {}),
     };
 
@@ -546,21 +566,65 @@ export function useChat({
     setReplyTo(null);
     setActionError("");
 
-    const formData = new FormData();
-    formData.append("groupId", selectedGroup!.id);
-    formData.append("content", content);
-    if (replyToMsg) {
-      formData.append("replyToId", replyToMsg.id);
-    }
-    if (media) {
-      formData.append("mediaUrl", media.mediaUrl);
-      formData.append("mediaType", media.mediaType);
-      if (media.mediaThumb) formData.append("mediaThumb", media.mediaThumb);
-      if (media.mediaSize) formData.append("mediaSize", String(media.mediaSize));
-      if (media.mediaDuration) formData.append("mediaDuration", String(media.mediaDuration));
-    }
+    // "upload" until we hold the final URL, then "send" for the server call —
+    // failures in the upload stage keep the bubble alive with a retry.
+    let stage: "upload" | "send" = draft ? "upload" : "send";
 
     try {
+      let mediaPayload: {
+        mediaUrl: string;
+        mediaType: "image" | "video" | "voice";
+        mediaThumb: string | null;
+        mediaSize: number | null;
+        mediaDuration: number | null;
+      } | null = null;
+
+      if (draft) {
+        // Await the background upload (usually already finished by now)
+        const unsubscribe = draft.handle.onProgress((p) => {
+          setMessages((prev) =>
+            prev.map((m) => (m.id === optimisticId ? { ...m, mediaProgress: p } : m))
+          );
+        });
+        let url: string;
+        try {
+          url = await draft.handle.promise;
+        } finally {
+          unsubscribe();
+        }
+        stage = "send";
+        URL.revokeObjectURL(draft.localUrl);
+        mediaPayload = {
+          mediaUrl: url,
+          mediaType: draft.mediaType,
+          mediaThumb: null,
+          mediaSize: draft.mediaSize,
+          mediaDuration: draft.mediaDuration,
+        };
+        // Swap the bubble from the local blob URL to the final download URL
+        setMessages((prev) =>
+          prev.map((m) =>
+            m.id === optimisticId
+              ? { ...m, mediaUrl: url, mediaStatus: null, mediaProgress: null }
+              : m
+          )
+        );
+      }
+
+      const formData = new FormData();
+      formData.append("groupId", selectedGroup!.id);
+      formData.append("content", content);
+      if (replyToMsg) {
+        formData.append("replyToId", replyToMsg.id);
+      }
+      if (mediaPayload) {
+        formData.append("mediaUrl", mediaPayload.mediaUrl);
+        formData.append("mediaType", mediaPayload.mediaType);
+        if (mediaPayload.mediaThumb) formData.append("mediaThumb", mediaPayload.mediaThumb);
+        if (mediaPayload.mediaSize) formData.append("mediaSize", String(mediaPayload.mediaSize));
+        if (mediaPayload.mediaDuration) formData.append("mediaDuration", String(mediaPayload.mediaDuration));
+      }
+
       const result = await sendMessageAction(formData);
       if (result.success && result.message) {
         const confirmed = result.message as Message;
@@ -579,20 +643,34 @@ export function useChat({
         setActionError(result.error || "Failed to send message.");
       }
     } catch {
-      optimisticMessageIdsRef.current.delete(optimisticId);
-      setMessages((prev) => prev.filter((m) => m.id !== optimisticId));
-      setActionError("Failed to send message.");
+      if (stage === "upload") {
+        // Upload failed — keep the bubble (it still previews via the local
+        // blob URL) and offer a retry instead of dropping the message.
+        setMessages((prev) =>
+          prev.map((m) =>
+            m.id === optimisticId ? { ...m, mediaStatus: "failed", mediaProgress: null } : m
+          )
+        );
+        mediaRetriesRef.current.set(optimisticId, {
+          file: draft!.file,
+          mediaType: draft!.mediaType,
+          mediaSize: draft!.mediaSize,
+          mediaDuration: draft!.mediaDuration,
+          localUrl: draft!.localUrl,
+          content,
+          replyToId: replyToMsg?.id ?? null,
+        });
+      } else {
+        optimisticMessageIdsRef.current.delete(optimisticId);
+        setMessages((prev) => prev.filter((m) => m.id !== optimisticId));
+        setActionError("Failed to send message.");
+      }
     }
-  };
+  }, [userId, selectedGroup]);
 
-  // Store pending media (set by composer when a file is selected, cleared after send)
-  const [pendingMedia, setPendingMedia] = useState<{
-    mediaUrl: string;
-    mediaType: "image" | "video" | "voice";
-    mediaThumb?: string | null;
-    mediaSize?: number | null;
-    mediaDuration?: number | null;
-  } | null>(null);
+  // Pending media draft — set by the composer as soon as a file is picked
+  // (its upload runs in the background) and cleared on send or discard.
+  const [pendingMedia, setPendingMedia] = useState<MediaDraft | null>(null);
 
   const handleSendMessage = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -608,23 +686,94 @@ export function useChat({
     await sendMessageCore(content, replyToMsg, media);
   };
 
-  // Send a media message (called from the composer after upload completes)
+  // Send a media message — the composer hands over the draft; the send path
+  // awaits its background upload and then persists the message.
   const sendMediaMessage = useCallback(
-    async (media: {
-      mediaUrl: string;
-      mediaType: "image" | "video" | "voice";
-      mediaThumb?: string | null;
-      mediaSize?: number | null;
-      mediaDuration?: number | null;
-    }, caption?: string) => {
+    async (draft: MediaDraft, caption?: string) => {
       if (!selectedGroup) return;
       const content = caption?.trim() || "";
       const replyToMsg = replyTo;
       setReplyTo(null);
       setPendingMedia(null);
-      await sendMessageCore(content, replyToMsg, media);
+      await sendMessageCore(content, replyToMsg, draft);
     },
     [selectedGroup, replyTo, sendMessageCore]
+  );
+
+  // Retry a media message whose upload failed ("Tap to retry" on the bubble).
+  const handleMediaRetry = useCallback(
+    async (messageId: string) => {
+      const entry = mediaRetriesRef.current.get(messageId);
+      if (!entry || !selectedGroup) return;
+      mediaRetriesRef.current.delete(messageId);
+      setMessages((prev) =>
+        prev.map((m) =>
+          m.id === messageId ? { ...m, mediaStatus: "uploading" as const, mediaProgress: 0 } : m
+        )
+      );
+      try {
+        let url: string;
+        if (entry.uploadedUrl) {
+          // Upload already succeeded previously — go straight to the server send.
+          url = entry.uploadedUrl;
+        } else {
+          const handle = startMediaUpload(entry.file, userId);
+          const unsubscribe = handle.onProgress((p) => {
+            setMessages((prev) =>
+              prev.map((m) => (m.id === messageId ? { ...m, mediaProgress: p } : m))
+            );
+          });
+          try {
+            url = await handle.promise;
+          } finally {
+            unsubscribe();
+          }
+          URL.revokeObjectURL(entry.localUrl);
+        }
+        setMessages((prev) =>
+          prev.map((m) =>
+            m.id === messageId ? { ...m, mediaUrl: url, mediaStatus: null, mediaProgress: null } : m
+          )
+        );
+
+        const formData = new FormData();
+        formData.append("groupId", selectedGroup.id);
+        formData.append("content", entry.content);
+        if (entry.replyToId) formData.append("replyToId", entry.replyToId);
+        formData.append("mediaUrl", url);
+        formData.append("mediaType", entry.mediaType);
+        if (entry.mediaSize) formData.append("mediaSize", String(entry.mediaSize));
+        if (entry.mediaDuration) formData.append("mediaDuration", String(entry.mediaDuration));
+
+        const result = await sendMessageAction(formData);
+        if (result.success && result.message) {
+          const confirmed = result.message as Message;
+          optimisticMessageIdsRef.current.delete(messageId);
+          optimisticMessageIdsRef.current.add(confirmed.id);
+          setMessages((prev) => {
+            const withoutPolledCopy = prev.filter((m) => m.id !== confirmed.id);
+            return withoutPolledCopy.map((m) => (m.id === messageId ? confirmed : m));
+          });
+          lastMessageTimeRef.current = confirmed.createdAt;
+        } else {
+          // Upload succeeded but the server refused — remember the URL so a
+          // retry doesn't re-upload the file.
+          mediaRetriesRef.current.set(messageId, { ...entry, uploadedUrl: url });
+          setMessages((prev) =>
+            prev.map((m) => (m.id === messageId ? { ...m, mediaStatus: "failed" as const } : m))
+          );
+          setActionError(result.error || "Failed to send message.");
+        }
+      } catch {
+        mediaRetriesRef.current.set(messageId, entry);
+        setMessages((prev) =>
+          prev.map((m) =>
+            m.id === messageId ? { ...m, mediaStatus: "failed" as const, mediaProgress: null } : m
+          )
+        );
+      }
+    },
+    [selectedGroup, userId]
   );
 
   // Optimistic reactions — toggle locally, reconcile with server
@@ -913,6 +1062,7 @@ export function useChat({
     handleDeleteMessage,
     handleEditMessage,
     sendMediaMessage,
+    handleMediaRetry,
     pendingMedia,
     setPendingMedia,
     selectGroup,

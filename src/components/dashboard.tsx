@@ -102,6 +102,7 @@ export function Dashboard({
     handleDeleteMessage,
     handleEditMessage,
     sendMediaMessage,
+    handleMediaRetry,
     pendingMedia,
     setPendingMedia,
     selectGroup,
@@ -465,7 +466,6 @@ export function Dashboard({
         selectedId={activeDmId ?? selectedGroupId}
         selectedKind={activeDmId ? "dm" : selectedGroupId ? "group" : null}
         onSelectConversation={handleSelectConversation}
-        onShowNewDm={() => setShowNewDmModal(true)}
         sidebarOpen={sidebarOpen}
         onToggleTheme={toggleTheme}
         onShowCreate={() => setShowCreateModal(true)}
@@ -481,6 +481,7 @@ export function Dashboard({
         <div className="safe-top flex items-center gap-3 border-b border-hairline px-3 py-2 md:hidden">
           <button
             onClick={() => setSidebarOpen(true)}
+            aria-label="Open menu"
             className="rounded-lg p-2 text-ink-muted transition-colors hover:bg-surface-raised hover:text-ink-text"
             title="Open menu"
           >
@@ -541,6 +542,7 @@ export function Dashboard({
               <div className="flex items-center gap-2">
                 <button
                   onClick={() => setShowSearchModal(true)}
+                  aria-label="Search messages"
                   className="rounded-lg p-2 text-ink-muted transition-colors hover:bg-surface-raised hover:text-ink-text"
                   title="Search messages"
                 >
@@ -600,6 +602,9 @@ export function Dashboard({
                   e.preventDefault();
                 }
               }}
+              role="log"
+              aria-live="polite"
+              aria-label={`Messages in ${selectedGroup.name}`}
               className="chat-scroll min-h-0 flex-1 overflow-y-auto px-3 py-4 sm:px-5"
             >
               {messages.length === 0 ? (
@@ -639,13 +644,18 @@ export function Dashboard({
                           onReact={handleReact}
                           onDelete={handleDeleteMessage}
                           onEdit={handleEditMessage}
+                          onMediaRetry={handleMediaRetry}
                         />
                       </div>
                     );
                   })}
                   {/* Typing indicator — shows who is typing */}
                   {typingUsers.size > 0 && (
-                    <div className="flex items-center gap-2 px-1 py-2 text-xs text-ink-muted">
+                    <div
+                      role="status"
+                      aria-live="polite"
+                      className="flex items-center gap-2 px-1 py-2 text-xs text-ink-muted"
+                    >
                       <span
                         aria-hidden
                         className="tea-pulse h-2 w-2 shrink-0 rounded-full bg-tea shadow-[0_0_10px_2px_rgba(246,185,59,0.4)]"
@@ -662,6 +672,7 @@ export function Dashboard({
             {!isNearBottom && messages.length > 0 && (
               <button
                 onClick={() => scrollToBottom()}
+                aria-label="Jump to latest messages"
                 className="absolute bottom-28 left-1/2 z-10 flex h-10 w-10 -translate-x-1/2 items-center justify-center rounded-full border border-hairline bg-surface-raised text-ink-muted shadow-xl transition-colors hover:text-gossip"
                 title="Jump to latest messages"
               >
@@ -671,11 +682,16 @@ export function Dashboard({
 
             {/* Action error banner */}
             {actionError && (
-              <div className="border-t border-red-500/30 bg-red-500/10 px-4 py-2">
+              <div
+                role="alert"
+                aria-live="assertive"
+                className="border-t border-red-500/30 bg-red-500/10 px-4 py-2"
+              >
                 <div className="flex items-center justify-between">
                   <p className="text-xs text-red-400">{actionError}</p>
                   <button
                     onClick={() => setActionError("")}
+                    aria-label="Dismiss error"
                     className="rounded p-0.5 text-red-400/70 transition-colors hover:text-red-300"
                     title="Dismiss"
                   >
@@ -730,9 +746,8 @@ export function Dashboard({
               <div className="flex items-center gap-2">
                 <MediaPicker
                   userId={userId}
-                  onPendingMediaChange={(media) => {
-                    setPendingMedia(media);
-                  }}
+                  draft={pendingMedia}
+                  onDraftChange={setPendingMedia}
                 />
                 <input
                   type="text"
@@ -740,11 +755,13 @@ export function Dashboard({
                   onChange={(e) => handleInputChange(e.target.value)}
                   placeholder={pendingMedia ? "Add a caption…" : `Message #${selectedGroup.name}…`}
                   maxLength={2000}
+                  aria-label="Message input"
                   className="min-w-0 flex-1 rounded-xl border border-hairline bg-surface-raised px-4 py-2.5 text-sm text-ink-text placeholder:text-ink-muted outline-none transition-colors focus:border-gossip focus:ring-2 focus:ring-gossip/20"
                 />
                 <button
                   type="submit"
                   disabled={!messageInput.trim() && !pendingMedia}
+                  aria-label="Send message"
                   className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-gossip-deep text-white transition-all hover:bg-gossip disabled:cursor-not-allowed disabled:opacity-40"
                 >
                   <Send className="h-4 w-4" />
