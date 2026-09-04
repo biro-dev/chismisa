@@ -28,25 +28,60 @@ type MediaPickerProps = {
 };
 
 /**
+ * Request microphone permission on native platforms (Android/iOS).
+ * Uses Capacitor's Permissions API if available, otherwise falls back to getUserMedia.
+ * Returns true if granted, false if denied or unavailable.
+ */
+async function requestMicrophonePermission(): Promise<{ granted: boolean; denied: boolean }> {
+  try {
+    // Check if mediaDevices API is available
+    if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+      return { granted: false, denied: false };
+    }
+
+    // On native platforms, try to use Capacitor Permissions API if available
+    if (Capacitor.isNativePlatform()) {
+      try {
+        // Dynamically import @capacitor/permissions if available
+        const { Permissions } = await import("@capacitor/permissions");
+        const check = await Permissions.query({ name: "microphone" as any });
+        
+        if (check.state === "granted") {
+          return { granted: true, denied: false };
+        } else if (check.state === "denied") {
+          return { granted: false, denied: true };
+        }
+        
+        // Request permission
+        const request = await Permissions.request({ name: "microphone" as any });
+        return { granted: request.state === "granted", denied: request.state === "denied" };
+      } catch {
+        // @capacitor/permissions not installed, fall through to getUserMedia
+      }
+    }
+
+    // Fallback: use getUserMedia to trigger permission dialog
+    const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+    // Immediately stop the stream - we just wanted to check permission
+    stream.getTracks().forEach((track) => track.stop());
+    return { granted: true, denied: false };
+  } catch (err) {
+    console.error("Microphone permission request failed:", err);
+    // Check if error indicates permission denial
+    if (err instanceof Error && (err.name === "NotAllowedError" || err.name === "PermissionDeniedError")) {
+      return { granted: false, denied: true };
+    }
+    return { granted: false, denied: false };
+  }
+}
+
+/**
  * Check if microphone permission is granted.
  * Returns true if granted, false if denied or unavailable.
  */
 async function checkMicrophonePermission(): Promise<boolean> {
-  try {
-    // Check if mediaDevices API is available
-    if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
-      return false;
-    }
-    
-    // Try to get user media to trigger permission prompt
-    const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-    // Immediately stop the stream - we just wanted to check permission
-    stream.getTracks().forEach((track) => track.stop());
-    return true;
-  } catch (err) {
-    console.error("Microphone permission check failed:", err);
-    return false;
-  }
+  const result = await requestMicrophonePermission();
+  return result.granted;
 }
 
 /**
@@ -128,14 +163,30 @@ export function MediaPicker({ userId, draft, onDraftChange }: MediaPickerProps) 
       }
 
       setError(null);
+      
+      // Validate file type
+      if (type === "image" && !file.type.startsWith("image/")) {
+        setError("Invalid file type. Please select an image file.");
+        return;
+      }
+      if (type === "video" && !file.type.startsWith("video/")) {
+        setError("Invalid file type. Please select a video file.");
+        return;
+      }
+
       // Compress images before upload (skip for videos)
       if (type === "image") {
         try {
           const originalSize = file.size;
-          file = await compressImage(file, 1200, 0.75);
-          console.log("Image compressed: " + formatFileSize(originalSize) + " -> " + formatFileSize(file.size));
+          const compressedFile = await compressImage(file, 1200, 0.75);
+          // Only use compressed file if it's actually smaller
+          if (compressedFile.size < originalSize) {
+            file = compressedFile;
+            console.log("Image compressed: " + formatFileSize(originalSize) + " -> " + formatFileSize(file.size));
+          }
         } catch (err) {
           console.warn("Image compression failed, using original:", err);
+          // Continue with original file - compression is optional
         }
       }
 
@@ -157,13 +208,32 @@ export function MediaPicker({ userId, draft, onDraftChange }: MediaPickerProps) 
         return;
       }
 
-      // Check/request microphone permission first
+      // Get supported MIME type first (before permission request)
       const mimeType = getSupportedMimeType();
       
-      // Request microphone access - this will trigger the permission dialog
-      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      // Request microphone permission - this will trigger the permission dialog
+      // On native platforms, this uses Capacitor's Permissions API if available
+      const permission = await requestMicrophonePermission();
       
-      // Permission granted - update state
+      if (!permission.granted) {
+        setMicPermissionGranted(false);
+        // Provide helpful instructions based on platform
+        const isNative = Capacitor.isNativePlatform();
+        if (permission.denied) {
+          // Permission was explicitly denied
+          const instructions = isNative
+            ? "Microphone access denied. Please enable microphone permission in your device settings: Settings > Apps > Chismisa > Permissions > Microphone."
+            : "Microphone access denied. Please allow microphone permission in your browser settings and refresh the page.";
+          setError(instructions);
+        } else {
+          // Permission dialog was dismissed or not available
+          setError("Microphone permission is required to record voice messages.");
+        }
+        return;
+      }
+      
+      // Permission granted - get the audio stream
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
       setMicPermissionGranted(true);
       
       const options = mimeType ? { mimeType } : undefined;
@@ -251,8 +321,8 @@ export function MediaPicker({ userId, draft, onDraftChange }: MediaPickerProps) 
 
   return (
     <div className="relative flex items-center gap-1">
-      <input ref={imageInputRef} type="file" accept="image/*" className="hidden" onChange={(e) => handleFileSelect(e, "image")} />
-      <input ref={videoInputRef} type="file" accept="video/*" className="hidden" onChange={(e) => handleFileSelect(e, "video")} />
+      <input ref={imageInputRef} type="file" accept="image/*" capture="environment" className="hidden" onChange={(e) => handleFileSelect(e, "image")} />
+      <input ref={videoInputRef} type="file" accept="video/*" capture="environment" className="hidden" onChange={(e) => handleFileSelect(e, "video")} />
       <button type="button" onClick={() => imageInputRef.current?.click()} disabled={recordingControlsDisabled} className="rounded-lg p-2 text-ink-muted transition-colors hover:bg-surface-raised hover:text-gossip disabled:opacity-40" title="Send image"><Camera className="h-4 w-4" /></button>
       <button type="button" onClick={() => videoInputRef.current?.click()} disabled={recordingControlsDisabled} className="rounded-lg p-2 text-ink-muted transition-colors hover:bg-surface-raised hover:text-gossip disabled:opacity-40" title="Send video"><Video className="h-4 w-4" /></button>
       <button type="button" onClick={() => { if (recording) stopRecording(); else startRecording(); }} disabled={!!draft} className={`rounded-lg p-2 transition-colors disabled:opacity-40 ${recording ? "bg-red-500 text-white" : "text-ink-muted hover:bg-surface-raised hover:text-gossip"}`} title={recording ? "Stop recording" : "Record voice message"}>

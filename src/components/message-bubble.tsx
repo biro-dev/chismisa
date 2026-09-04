@@ -505,11 +505,11 @@ export const MessageBubble = memo(function MessageBubble({
       className={`group msg-bubble animate-bubble-in flex ${
         isOwn ? "justify-end" : "justify-start"
       } ${grouped ? "mt-0.5" : ""} ${
-        groupedReactions.length > 0 ? "pb-4" : ""
+        groupedReactions.length > 0 ? "mb-2" : ""
       }`}
     >
       <div
-        className={`w-fit min-w-0 max-w-[85%] sm:max-w-[70%] ${
+        className={`relative w-fit min-w-0 max-w-[85%] sm:max-w-[70%] ${
           isOwn ? "items-end" : "items-start"
         }`}
       >
@@ -700,35 +700,36 @@ export const MessageBubble = memo(function MessageBubble({
             </>
           )}
 
-          {/* Applied reaction badges - positioned below the bubble */}
-          {!msg.deletedAt && groupedReactions.length > 0 && (
-            <div
-              onPointerDown={(e) => e.stopPropagation()}
-              className={`absolute bottom-[-12px] z-10 flex gap-1.5 ${
-                isOwn ? "right-2" : "left-2"
-              }`}
-            >
-              {groupedReactions.slice(0, 3).map(([emoji, reactions]) => (
-                <button
-                  key={emoji}
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    onReact(msg.id, emoji);
-                  }}
-                  className={`flex items-center gap-1 rounded-full border px-2 py-1 text-xs shadow-lg transition-transform hover:scale-105 ${
-                    reactions.some((r) => r.userId === userId)
-                      ? "border-gossip bg-gossip-deep text-white"
-                      : "border-hairline bg-surface-raised text-ink-text"
-                  }`}
-                  title={`${reactions.map((r) => r.username).join(", ")}`}
-                >
-                  <span className="text-sm">{emoji}</span>
-                  <span className="font-semibold">{reactions.length}</span>
-                </button>
-              ))}
-            </div>
-          )}
         </div>
+
+        {/* Applied reaction badges - positioned below the bubble */}
+        {!msg.deletedAt && groupedReactions.length > 0 && (
+          <div
+            onPointerDown={(e) => e.stopPropagation()}
+            className={`absolute bottom-0 z-10 flex translate-y-full gap-1.5 ${
+              isOwn ? "right-2" : "left-2"
+            }`}
+          >
+            {groupedReactions.slice(0, 3).map(([emoji, reactions]) => (
+              <button
+                key={emoji}
+                onClick={(e) => {
+                  e.stopPropagation();
+                  onReact(msg.id, emoji);
+                }}
+                className={`flex items-center gap-1 rounded-full border px-2 py-1 text-xs shadow-lg transition-transform hover:scale-105 ${
+                  reactions.some((r) => r.userId === userId)
+                    ? "border-gossip bg-gossip-deep text-white"
+                    : "border-hairline bg-surface-raised text-ink-text"
+                }`}
+                title={`${reactions.map((r) => r.username).join(", ")}`}
+              >
+                <span className="text-sm">{emoji}</span>
+                <span className="font-semibold">{reactions.length}</span>
+              </button>
+            ))}
+          </div>
+        )}
 
         {/* Read receipt — below the bubble (in flow) so it can never overlap
             the message text or the reaction badges */}
